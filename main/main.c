@@ -18,6 +18,9 @@
 #include "utils/utils.h"
 #include "wifi/wifi.h"
 #include "sockets/socket_server.h"
+
+// WARNING.  THIS FILE IS A MESS.  JUST A PLACEHOLDER FOR TESTING NEW FUNCTIONS/FEATURES AS I ADD THEM.  WILL WORKING CORE TEST FUNCTIONS SOON.
+
 //esp_err_t event_handler(void *ctx, system_event_t *event)
 //{
 //    return ESP_OK;
@@ -31,11 +34,10 @@ extern void task_stepper_control(void *ignore);
 extern void task_stepper_control2(void *ignore);
 extern void task_ar6115e_read(void *ignore);
 extern void task_adns3080_reader_task(void *ignore);
+
 // TODO: Move this to another file/task. For testing
 void spektrum_handler(pulse_event_t event)
 {
-
-
     // TODO: Blah set speed
     int max_speed = 50000;
 
@@ -48,13 +50,9 @@ void spektrum_handler(pulse_event_t event)
 
         //ESP_LOGI(tag, "Hello: %f\n", max_speed * (output_speed / 100.0));
     stepper_control_set_speed(STEPPER_MOTOR_1, max_speed * (output_speed / 100.0));
-
-
 }
 
 void task_servoSweep(void *ignore) {
-
-
     while(1)
     {
         socket_server_send_data(sock, (uint8_t *)"HELLO", 5);

@@ -40,7 +40,7 @@ static const char *tag = "wifi";
 #define AP_TARGET_SSID     "AndroidAP"
 // The password we need to supply to the access point for authorization.
 #define AP_TARGET_PASSWORD "8ace66a8947f"
-//#define AP_TARGET_PASSWORD "Panels2k13"
+
 
 // Cache IP Information
 ip4_addr_t ip;
