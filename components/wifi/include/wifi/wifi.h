@@ -32,21 +32,9 @@ extern "C"
 {
 #endif
 
-/**
- * @brief Struct with wifi device configuration
- */
-typedef struct {
-    char device_ip[15];           // IP Address
-    char device_gw[15];           // Gateway
-    char device_netmask[15];      // Netmask
-    char device_ssid_name[32];    // SSID Name
-    char device_ssid_password[64]; // SSID Password
-} wifi_device_config_t;
+void wifi_init_connect_ap(wifi_config_t sta_config);
 
-
-void wifi_init_connect_ap(wifi_device_config_t config);
-
-void wifi_init_start_ap(wifi_device_config_t config);
+void wifi_init_start_ap(wifi_config_t ap_config);
 
 
 #ifdef __cplusplus

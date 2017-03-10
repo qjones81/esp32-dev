@@ -22,16 +22,13 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <lwip/sockets.h>
 #include "freertos/FreeRTOS.h"
+#include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_event_loop.h"
-#include "nvs_flash.h"
-#include <lwip/sockets.h>
-#include <esp_log.h>
-
-
 #include "socket_server.h"
 
 static const char *tag = "socket_server";
@@ -94,9 +91,20 @@ void socket_server_send_data(socket_device_t *device, uint8_t *data, size_t leng
         return;
     }
 
+    // Check for close
+    char buffer[32];
+    if (recv(device->client_sock, buffer, sizeof(buffer),
+            MSG_PEEK | MSG_DONTWAIT) == 0) {
+        ESP_LOGE(tag, "ERROR: Client connection closed");
+
+        // TODO: Remove connection and don't send BLAH BLAH
+        return;
+    }
+
     int ret = send(device->client_sock, data, length, 0);
     if (ret == -1) {
-        ESP_LOGE(tag, "ERROR:  Unable to send data:  send(): %s", strerror(errno));
+        ESP_LOGE(tag, "ERROR:  Unable to send data:  send(): %s",
+                strerror(errno));
     }
 }
 void socket_server_start(socket_device_t *device)

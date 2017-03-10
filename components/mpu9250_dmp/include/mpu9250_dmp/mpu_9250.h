@@ -53,9 +53,6 @@ inv_error_t mpu_9250_begin();
 float mpu_9250_get_gyro_sens();
 float mpu_9250_get_accel_sens();
 
-void mpu_9250_read_accel_data(int16_t * destination);
-void mpu_9250_read_gyro_data(int16_t * destination);
-void mpu_9250_read_mag_data(int16_t * destination);
 int mpu_9250_read_temp_data();
 
 inv_error_t mpu_9250_dmp_begin(unsigned short features, unsigned short fifoRate);
@@ -66,5 +63,11 @@ unsigned short mpu_9250_fifo_available(void);
 
 void mpu_9250_compute_euler_angles(bool degrees);
 
+int mpu_9250_update_accel();
+int mpu_9250_update_gyro();
+int mpu_9250_update_compass();
+float mpu_9250_compute_heading();
+
+bool mpu_9250_data_available();
 
 #endif /* MPU_9250_H_ */

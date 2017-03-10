@@ -34,6 +34,8 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "utils/utils.h"
+#include "sockets/socket_server.h"
+
 #include "ar6115e.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
@@ -54,6 +56,9 @@ volatile uint16_t pulse_start_time[CHANNEL_MAX] = { 0 };
 volatile uint16_t channel_value[CHANNEL_MAX] = { 0 };
 
 rc_event_cb_t rc_handler = NULL;
+
+// Socket for Debug
+socket_device_t *sock = NULL;
 static void isr_handler(void *arg) {
 
     // TODO: Rollover Handling
@@ -67,18 +72,80 @@ static void isr_handler(void *arg) {
         pulse_event.channel = event->channel;
         pulse_event.gpio = event->gpio;
         pulse_event.pulse_width = pulse_width[event->channel];
+       // ESP_LOGI(tag, "Hello: %d\n", pulse_event.pulse_width);
         xQueueSendToBackFromISR(q1, &pulse_event, NULL);
     }
-
-    //ESP_LOGI(tag, "Hello: %d\n", micros());
 }
+
+void task_ar6115e_read(void *ignore)
+{
+    ESP_LOGD(tag, ">> task_ar611e_read");
+    while (1) {
+        pulse_event_t pulse_event;
+        // ESP_LOGD(tag, "Waiting on interrupt queue");
+        xQueueReceive(q1, &pulse_event, portMAX_DELAY);
+
+        // Cache for polling
+        // TODO: Mutex here?
+        channel_value[pulse_event.channel] = pulse_event.pulse_width;
+        //  ESP_LOGD(tag, "Woke from interrupt queue wait: %d/%d", rc, pulse_event.pulse_width);
+
+        if (rc_handler)
+            rc_handler(pulse_event); // Send to handler if registered
+    }
+    vTaskDelete(NULL);
+}
+#if defined(CONFIG_AR6115_USE_DEBUG_SERVICE)
+void task_ar6115e_socket_debug(void *ignore)
+{
+    ESP_LOGD(tag, ">> task_ar6115e_socket_debug");
+    while (1) {
+        char str[80];
+        // TODO: Mutex Here or does volatile work here
+        sprintf(str, "%d:%d:%d:%d:%d:%d\n",  channel_value[0],
+                channel_value[1],
+                channel_value[2],
+                channel_value[3],
+                channel_value[4],
+                channel_value[5]);
+
+        ESP_LOGI(tag, "%s",str);
+        socket_server_send_data(sock, (uint8_t *)str, strlen(str) + 1);
+        vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+#endif
 
 void ar6115e_init(rc_event_cb_t handler)
 {
     rc_handler = handler;
+
+    // Create queue for receiving
+    q1 = xQueueCreate(10, sizeof(pulse_event_t));
+
+    // Zero out channels
+    //memset(channel_value, 0, sizeof(uint16_t) * CHANNEL_MAX));
+    for(int i = 0; i < CHANNEL_MAX; i++) // TODO: Better way here
+    {
+        channel_value[i] = 0;
+    }
+
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
 }
+void ar6115e_start()
+{
+    xTaskCreate(&task_ar6115e_read, "ar6115_task", 2048, NULL, 3, NULL);
 
+#if defined(CONFIG_AR6115_USE_DEBUG_SERVICE)
+        sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+        sock->port = CONFIG_AR6115_DEBUG_PORT;
+        socket_server_init(sock);
+        socket_server_start(sock);
+
+        xTaskCreate(&task_ar6115e_socket_debug, "ar6115_socket_task", 2048, NULL, 3, NULL);
+#endif
+}
 void ar6115e_add_channel(channel_type_t channel_t, gpio_num_t input_pin)
 {
     // Setup Config
@@ -94,7 +161,7 @@ void ar6115e_add_channel(channel_type_t channel_t, gpio_num_t input_pin)
     gpio_channel_map[channel_t] = input_pin;
 
     // TODO: Clean up mem here
-    gpio_event_t *gpio_event = malloc(sizeof(gpio_event_t));;
+    gpio_event_t *gpio_event = malloc(sizeof(gpio_event_t));
     gpio_event->channel = channel_t;
     gpio_event->gpio = input_pin;
     gpio_isr_handler_add(input_pin, isr_handler, (void *)gpio_event);
@@ -105,24 +172,4 @@ uint16_t ar6115e_get_channel_value(channel_type_t channel_t)
     return channel_value[channel_t];
 }
 
-void task_ar6115e_read(void *ignore)
-{
-    ESP_LOGD(tag, ">> task_ar611e_read");
-
-    // Create queue for receiving
-    q1 = xQueueCreate(10, sizeof(pulse_event_t));
-
-    while(1) {
-        pulse_event_t pulse_event;
-       // ESP_LOGD(tag, "Waiting on interrupt queue");
-        BaseType_t rc = xQueueReceive(q1, &pulse_event, portMAX_DELAY);
-
-        // Cache for polling
-        channel_value[pulse_event.channel] = pulse_event.pulse_width;
-        //ESP_LOGD(tag, "Woke from interrupt queue wait: %d/%d", rc, pulse_event.pulse_width);
-
-        if(rc_handler) rc_handler(pulse_event); // Send to handler if registered
-    }
-    vTaskDelete(NULL);
-}
 

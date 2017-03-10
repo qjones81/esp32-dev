@@ -29,14 +29,19 @@
 #include "esp_log.h"
 
 #include "utils/utils.h"
+#include "sockets/socket_server.h"
 #include "adns3080.h"
 
-static const char *TAG = "adns-3080";
+static const char *tag = "adns-3080";
 
 
 #define MAX_SENSORS 3 // Max number of optical sensors allowed to be controlled.
 
 adns_3080_device_t *adns_devices[MAX_SENSORS] = { NULL };
+
+// Socket for Debug
+socket_device_t *frame_sock = NULL;
+socket_device_t *optical_flow_sock = NULL;
 
 void read_register_data(uint8_t address, uint8_t *rx_data, uint8_t length, adns_3080_device_t *device)
 {
@@ -51,7 +56,7 @@ void read_register_data(uint8_t address, uint8_t *rx_data, uint8_t length, adns_
     spi_transfer(&tx_data, rx_data, length, device->spi_device); // Transfer out read reg
     gpio_set_level(device->cs_pin, 1); // Toggle our own CS in software so we can support the mid transaction delays
 
-  //  ESP_LOGI(TAG, "Received: 0x%x.\n", rx_data);
+  //  ESP_LOGI(tag, "Received: 0x%x.\n", rx_data);
 }
 
 uint8_t read_register(uint8_t address, adns_3080_device_t *device)
@@ -67,7 +72,7 @@ uint8_t read_register(uint8_t address, adns_3080_device_t *device)
     spi_transfer(&tx_data, &rx_data, 1, device->spi_device); // Transfer out read reg
     gpio_set_level(device->cs_pin, 1); // Toggle our own CS in software so we can support the mid transaction delays
 
-  //  ESP_LOGI(TAG, "Received: 0x%x.\n", rx_data);
+  //  ESP_LOGI(tag, "Received: 0x%x.\n", rx_data);
     return rx_data;
 }
 
@@ -86,18 +91,19 @@ void write_register(uint8_t address, uint8_t data, adns_3080_device_t *device)
 // Read Task
 void task_adns3080_reader_task(void *ignore)
 {
-    ESP_LOGD(TAG, ">>task_adns3080_reader_task");
+    ESP_LOGD(tag, ">>task_adns3080_reader_task");
 
+    // TODO: Pass sensor id, replace [0] blah blah
     while (1) {
         // Read sensor
         uint8_t buf[4];
         read_register_data(ADNS3080_MOTION_BURST, buf, 4, adns_devices[0]);
         uint8_t motion = buf[0];
-        ESP_LOGI(TAG, "ADNS motion resolution: %d", motion & 0x01); // Resolution
+       // ESP_LOGI(tag, "ADNS motion resolution: %d", motion & 0x01); // Resolution
 
         if (motion & 0x10) // Check if we've had an overflow
         {
-            ESP_LOGD(TAG, "ADNS-3080 overflow\n");
+            ESP_LOGD(tag, "ADNS-3080 overflow\n");
         }
         else if (motion & 0x80) {
             int8_t dx = buf[1];
@@ -108,21 +114,54 @@ void task_adns3080_reader_task(void *ignore)
             adns_devices[0]->y += dy;
 
             // Print values
-            ESP_LOGI(TAG,"x=%d,y=%d\tSQUAL:%d",adns_devices[0]->x,adns_devices[0]->y,SQUAL);
+            ESP_LOGI(tag,"x=%d,y=%d\tSQUAL:%d",adns_devices[0]->x,adns_devices[0]->y,SQUAL);
         }
 
-        vTaskDelay(10);
+        vTaskDelay(CONFIG_ADNS3080_OPTICAL_FLOW_UPDATE_PERIOD/portTICK_PERIOD_MS);
     }
 
     vTaskDelete(NULL);
 }
+#if defined(CONFIG_ADNS3080_USE_FRAME_DEBUG_SERVICE)
+void task_adns3080_socket_frame_debug(void *ignore)
+{
+    ESP_LOGD(tag, ">> task_adns3080_socket_frame_debug");
+    while (1) {
+        char str[80];
+        // TODO: Mutex Here or does volatile work here?
+        //float a_sens_inv = 1.0 / _aSense;
+        sprintf(str, "FRAME DATA\n");
 
+        //ESP_LOGI(tag, "%s",str);
+        socket_server_send_data(frame_sock, (uint8_t *)str, strlen(str) + 1);
+        vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+#endif
 
+#if defined(CONFIG_ADNS3080_USE_OPTICAL_FLOW_DEBUG_SERVICE)
+void task_adns3080_socket_optical_flow_debug(void *ignore)
+{
+
+    ESP_LOGD(tag, ">> task_adns3080_socket_sensor_debug");
+    while (1) {
+        char str[80];
+        // TODO: Mutex Here or does volatile work here?
+        //float a_sens_inv = 1.0 / _aSense;
+        sprintf(str, "SENSOR DATA\n");
+
+        //ESP_LOGI(tag, "%s",str);
+        socket_server_send_data(optical_flow_sock, (uint8_t *)str, strlen(str) + 1);
+        vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+#endif
 
 // ADNS 3080 Functions
 esp_err_t adns_3080_init(adns_3080_device_t *device)
 {
-
 
     // Setup device pins
     gpio_set_direction(device->reset_pin, GPIO_MODE_OUTPUT);
@@ -145,44 +184,52 @@ esp_err_t adns_3080_init(adns_3080_device_t *device)
 
     uint8_t id = read_register(ADNS3080_PRODUCT_ID, device);
     if (id == ADNS3080_PRODUCT_ID_VALUE) {
-        ESP_LOGI(TAG, "ADNS-3080 found. id = 0x%x\n", id);
+        ESP_LOGI(tag, "ADNS-3080 found. id = 0x%x\n", id);
     } else {
-        ESP_LOGE(TAG, "Could not find ADNS-3080. id: 0x%x\n", id);
+        ESP_LOGE(tag, "Could not find ADNS-3080. id: 0x%x\n", id);
 
-       return ESP_FAIL;
-   }
+        return ESP_FAIL;
+    }
 
     uint8_t config = read_register(ADNS3080_CONFIGURATION_BITS, device);
-    ESP_LOGI(TAG, "ADNS-3080 configuration: 0x%x\n", config);
+    ESP_LOGI(tag, "ADNS-3080 configuration: 0x%x\n", config);
 
     // 1600 counts per inch
-    write_register(ADNS3080_CONFIGURATION_BITS, (config | 0b00010000), device);
+    if (CONFIG_ADNS3080_DEFAULT_COUNTS_PER_INCH == 1600)
+        write_register(ADNS3080_CONFIGURATION_BITS, (config | 0b00010000),
+                device);
+    else
+        // Low Res 400
+        write_register(ADNS3080_CONFIGURATION_BITS, (config & ~0b00010000),
+                device);
 
-        config = read_register(ADNS3080_CONFIGURATION_BITS, device);
-        ESP_LOGI(TAG, "ADNS-3080 configuration saved: 0x%x\n", config);
+    config = read_register(ADNS3080_CONFIGURATION_BITS, device);
+    ESP_LOGI(tag, "ADNS-3080 configuration saved: 0x%x\n", config);
 
-        // Add it
-        adns_devices[0] = device;
-while(1)
-{
+    // Add it
+    adns_devices[0] = device;
 
-        uint8_t buf[4];
-                read_register_data(ADNS3080_MOTION_BURST, buf, 4, adns_devices[0]);
-                uint8_t motion = buf[0];
-                ESP_LOGI(TAG, "ADNS motion resolution: %d", motion & 0x01); // Resolution
+    // SUCCESS:  Now start required task/services
+    xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
 
-                int8_t dx = buf[1];
-                            int8_t dy = buf[2];
-                            uint8_t SQUAL = buf[3];
+#if defined(CONFIG_ADNS3080_USE_FRAME_DEBUG_SERVICE)
+        frame_sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+        frame_sock->port = CONFIG_ADNS3080_FRAME_DEBUG_PORT;
+        socket_server_init(frame_sock);
+        socket_server_start(frame_sock);
 
-                            adns_devices[0]->x += dx;
-                            adns_devices[0]->y += dy;
+        xTaskCreate(&task_adns3080_socket_frame_debug, "adns3080_socket_frame_task", 2048, NULL, 3, NULL);
+#endif
 
-                            // Print values
-                            ESP_LOGI(TAG,"x=%d,y=%d\tSQUAL:%d",adns_devices[0]->x,adns_devices[0]->y,SQUAL);
+#if defined(CONFIG_ADNS3080_USE_OPTICAL_FLOW_DEBUG_SERVICE)
+        optical_flow_sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+        optical_flow_sock->port = CONFIG_ADNS3080_OPTICAL_FLOW_DEBUG_PORT;
+        socket_server_init(optical_flow_sock);
+        socket_server_start(optical_flow_sock);
 
-                delay_ms(100);
-}
+        xTaskCreate(&task_adns3080_socket_optical_flow_debug, "adns3080_socket_optical_flow_task", 2048, NULL, 3, NULL);
+#endif
+
     return ESP_OK;
 }
 

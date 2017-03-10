@@ -22,6 +22,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
@@ -29,18 +32,9 @@
 #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include <esp_log.h>
-
 #include "wifi.h"
 
 static const char *tag = "wifi";
-
-
-// The identity of the access point to which we wish to connect.
-//#define AP_TARGET_SSID     "C4SN"
-#define AP_TARGET_SSID     "AndroidAP"
-// The password we need to supply to the access point for authorization.
-#define AP_TARGET_PASSWORD "8ace66a8947f"
-
 
 // Cache IP Information
 ip4_addr_t ip;
@@ -52,40 +46,37 @@ bool connected = 0;
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
-   ESP_LOGI(tag, "event_handler: 0x%x", event->event_id);
+    ESP_LOGI(tag, "event_handler: 0x%x", event->event_id);
 
-   switch (event->event_id)
-   {
-      case SYSTEM_EVENT_STA_START:
-          ESP_LOGI(tag, "Connecting...");
-         esp_wifi_connect();
-         break;
+    switch (event->event_id) {
+        case SYSTEM_EVENT_STA_START:
+            ESP_LOGI(tag, "Connecting...");
+            esp_wifi_connect();
+            break;
 
-      case SYSTEM_EVENT_STA_GOT_IP:
-          ip = event->event_info.got_ip.ip_info.ip;
-          gw = event->event_info.got_ip.ip_info.gw;
-          msk = event->event_info.got_ip.ip_info.netmask;
-          connected = 1;
+        case SYSTEM_EVENT_STA_GOT_IP:
+            ip = event->event_info.got_ip.ip_info.ip;
+            gw = event->event_info.got_ip.ip_info.gw;
+            msk = event->event_info.got_ip.ip_info.netmask;
+            connected = 1;
 
-          ESP_LOGI(tag, "Connected. IP: [%s]", inet_ntoa(ip));
-         break;
+            ESP_LOGI(tag, "Connected. IP: [%s]", inet_ntoa(ip));
+            break;
 
-      case SYSTEM_EVENT_STA_DISCONNECTED:
-          connected = 0;
-          ESP_LOGI(tag, "Station Disconnected.  Attempting Reconnect...");
-         /* This is a workaround as ESP32 WiFi libs don't currently auto reassociate. */
-         esp_wifi_connect();
-         break;
+        case SYSTEM_EVENT_STA_DISCONNECTED:
+            connected = 0;
+            ESP_LOGI(tag, "Station Disconnected.  Attempting Reconnect...");
+            esp_wifi_connect();
+            break;
 
-      default:
-         break;
-   }
-   return ESP_OK;
+        default:
+            break;
+    }
+    return ESP_OK;
 }
 
-void wifi_init_connect_ap(wifi_device_config_t config)
+void wifi_init_connect_ap(wifi_config_t sta_config)
 {
-
     ESP_LOGI(tag, "wifi_init_connect_ap...");
     tcpip_adapter_init();
 
@@ -98,20 +89,13 @@ void wifi_init_connect_ap(wifi_device_config_t config)
     //inet_pton(AF_INET, config.device_netmask, &ipInfo.netmask);
     //tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &ipInfo);
 
-
     ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    wifi_config_t sta_config = {
-          .sta = {
-                .ssid = AP_TARGET_SSID,
-                .password = AP_TARGET_PASSWORD,
-                .bssid_set = 0
-          }
-    };
+
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_connect());

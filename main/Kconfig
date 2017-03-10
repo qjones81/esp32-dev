@@ -1,0 +1,17 @@
+
+menu "WiFi AP Configuration"
+
+# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
+config ESP32_WIFI_SSID
+    string "Target Wifi SSID"
+    default ""
+    help
+        WifI SSID as string.
+
+config ESP32_WIFI_PASSWORD
+    string "Target Wifi password"
+    default ""
+    help
+        The password for the target Wifi SSID.
+
+endmenu

@@ -1,0 +1,43 @@
+
+menu "MPU9250 IMU Configuration"
+
+# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
+choice MPU9250_DEFAULT_ADDRESS
+    prompt "I2C device address"
+    default MPU9250_DEFAULT_ADDRESS_0X68
+    help
+        I2C device address for IMU.
+
+config MPU9250_DEFAULT_ADDRESS_0X68
+    bool "0x68"
+config MPU9250_DEFAULT_ADDRESS_0X69
+    bool "0x69"
+endchoice
+
+config MPU9250_DEFAULT_ADDRESS
+    hex
+    default 0x68 if MPU9250_DEFAULT_ADDRESS_0X68
+    default 0x69 if MPU9250_DEFAULT_ADDRESS_0X69
+
+config MPU9250_DMP_RATE
+    int "DMP FIFO Rate (hz)"
+    default 200
+    range 1 200
+    help
+        DMP update rate for FIFO buffer in hz.  Valid options: 1 - 200
+
+config MPU9250_USE_DEBUG_SERVICE
+    bool "Enable Network Debug"
+    default n
+    help
+        Enable debug over server socket.
+
+config MPU9250_DEBUG_PORT
+    int "Port Number"
+    depends on MPU9250_USE_DEBUG_SERVICE
+    default ""
+    help
+        Port number for debug service.
+
+
+endmenu

@@ -61,6 +61,11 @@ typedef void (*rc_event_cb_t)(pulse_event_t event);
 void ar6115e_init(rc_event_cb_t handler);
 
 /**
+ * @brief Start reader task
+ */
+void ar6115e_start();
+
+/**
  * @brief Add channel for pwm input
  * @param channel_t: Channel ID.  Valid values from channel_type_t(THROTTLE, AILERON, ELEVATOR, RUDDER, GEAR, AUX1)
  * @param input_pin: Input pin for PWM

@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "sdkconfig.h"
 #include "inv_mpu.h"
 
 /* The following functions must be defined for this platform:
@@ -433,7 +434,7 @@ const struct gyro_reg_s reg = {
 #endif
 };
 const struct hw_s hw = {
-    .addr           = 0x68,
+    .addr           = MPU9250_DEFAULT_ADDRESS,
     .max_fifo       = 1024,
     .num_reg        = 118,
     .temp_sens      = 340,
@@ -513,7 +514,7 @@ const struct gyro_reg_s reg = {
 #endif
 };
 const struct hw_s hw = {
-    .addr           = 0x68,
+    .addr           = CONFIG_MPU9250_DEFAULT_ADDRESS,
     .max_fifo       = 1024,
     .num_reg        = 128,
     .temp_sens      = 321,
@@ -646,7 +647,6 @@ int mpu_read_reg(unsigned char reg, unsigned char *data)
 int mpu_init(struct int_param_s *int_param)
 {
     unsigned char data[6];
-
     /* Reset device. */
     data[0] = BIT_RESET;
     if (i2c_write(st.hw->addr, st.reg->pwr_mgmt_1, 1, data))

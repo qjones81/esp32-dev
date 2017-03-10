@@ -26,15 +26,14 @@
 //    return ESP_OK;
 //}
 
-socket_device_t *sock = NULL;
-
 static char tag[] = "MPU9250_DMP_TEST";
 
 extern void task_stepper_control(void *ignore);
 extern void task_stepper_control2(void *ignore);
-extern void task_ar6115e_read(void *ignore);
 extern void task_adns3080_reader_task(void *ignore);
+extern void task_imu_reader_task(void *ignore);
 
+adns_3080_device_t adns_test_2;
 // TODO: Move this to another file/task. For testing
 void spektrum_handler(pulse_event_t event)
 {
@@ -46,18 +45,13 @@ void spektrum_handler(pulse_event_t event)
 
     long output_speed = map(event.pulse_width, 1100, 1900, -100, 100);
 
-    ESP_LOGI(tag, "Hello: %d\n", (int32_t)output_speed);
+    //ESP_LOGI(tag, "Hello: %d\n", (int32_t)output_speed);
 
         //ESP_LOGI(tag, "Hello: %f\n", max_speed * (output_speed / 100.0));
-    stepper_control_set_speed(STEPPER_MOTOR_1, max_speed * (output_speed / 100.0));
+   // stepper_control_set_speed(STEPPER_MOTOR_1, max_speed * (output_speed / 100.0));
 }
 
 void task_servoSweep(void *ignore) {
-    while(1)
-    {
-        socket_server_send_data(sock, (uint8_t *)"HELLO", 5);
-        vTaskDelay(5000/portTICK_PERIOD_MS);
-    }
 //    int bitSize         = 15;
 //    int minValue        = 500;  // micro seconds (uS)
 //    int maxValue        = 2500; // micro seconds (uS)
@@ -129,33 +123,30 @@ void app_main(void)
 
     nvs_flash_init();
 
+    //   amis_30543_device_t amis_test;
 
- //   amis_30543_device_t amis_test;
-
-  //  adns_3080_device_t adns_test;
-
+   adns_3080_device_t adns_test;
 
     // Init SPI Bus
     ESP_LOGI(tag, "Initializing SPI Bus...\n");
     ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
     ESP_LOGI(tag, "SPI Bus Initialized.\n");
 
-    wifi_device_config_t wifi_config;
+    // Wifi Config
+    wifi_config_t sta_config;
+    memset(&sta_config, 0, sizeof(sta_config));
+    memcpy(sta_config.sta.ssid, CONFIG_ESP32_WIFI_SSID,
+            strlen(CONFIG_ESP32_WIFI_SSID) + 1);
+    memcpy(sta_config.sta.password, CONFIG_ESP32_WIFI_PASSWORD,
+            strlen(CONFIG_ESP32_WIFI_PASSWORD) + 1);
+    sta_config.sta.bssid_set = 0;
 
-    //wifi_config.device_ssid_name = "C4SN";
-    //wifi_config.device_ssid_password = "Panels2k13!";
+    // Init
+    wifi_init_connect_ap(sta_config);
 
-    wifi_init_connect_ap(wifi_config);
-
-    delay_ms(10000);
-
-    sock = (socket_device_t *)malloc(sizeof(socket_device_t));
-    sock->port = 9001;
-    socket_server_init(sock);
-    socket_server_start(sock);
-
-    // Should wait on callback for when connected and have ip to start socket server
-
+    // TODO: Delay and Wait for IP address
+    // POLL For Connection
+ //   delay_ms(10000);
 
 /*
     // Pin 5, 1Mhz, Mode 0
@@ -183,18 +174,18 @@ void app_main(void)
     //ESP_LOGI(tag, "int %d, long %d.\n", sizeof(int32_t), sizeof(long));
 
     // Pin 5, 2Mhz, Mode 0
-     //   ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
-      //  ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_26, 2000000, 3, &adns_test.spi_device)); // TODO: Pass In Values
-      //  ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
+        ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
+        ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_26, 1000000, 3, &adns_test.spi_device)); // TODO: Pass In Values
+        ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
 
 
         // Setup Pins
-      //  adns_test.reset_pin = 4;
-      //  adns_test.cs_pin = GPIO_NUM_5;
-      //  adns_test.x = 0;
-      //  adns_test.y = 0;
+        adns_test.reset_pin = GPIO_NUM_4;
+        adns_test.cs_pin = GPIO_NUM_5;
+        adns_test.x = 0;
+        adns_test.y = 0;
 
-     //   adns_3080_init(&adns_test);
+        adns_3080_init(&adns_test);
 
        // xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
   //  ESP_LOGI(tag, "Clock Frequency: %d.\n", APB_CLK_FREQ);
@@ -231,15 +222,47 @@ void app_main(void)
 
     //xTaskCreatePinnedToCore(&task_stepper_control, "stepper_control", 2048, NULL, 5, NULL, 1);
 
+    // SAVE ME FOR AR 6115 INIT
+    /*
+    ar6115e_init(spektrum_handler);
+    ar6115e_add_channel(THROTTLE, GPIO_NUM_27);
+    ar6115e_add_channel(AILERON, GPIO_NUM_14);
+    ar6115e_start();*/
 
-    //ar6115e_init(spektrum_handler);
-    //ar6115e_add_channel(THROTTLE, GPIO_NUM_15);
-    //ar6115e_add_channel(AILERON, GPIO_NUM_4);
-    //xTaskCreatePinnedToCore(&task_ar6115e_read, "ar6115_task", 2048, NULL, 3, NULL, 0);
+    /* SAVE FOR IMU INIT!!!
+       // Init i2c
+       i2c_init(22, 21);
+
+       // Make sure everything is up and ready
+       delay_ms(250);
+
+       // Begin IMU Setup
+       ESP_LOGI(tag, "MPU9250 Initializing...\n");
+       // Call imu.begin() to verify communication and initialize
+       if (mpu_9250_begin() != INV_SUCCESS)
+       {
+           ESP_LOGE(tag, "Error Initializing MPU9250 IMU.\n");
+         while (1) // Cannot Continue.  Loop Forever with delay a bit
+         {
+               delay(5000);
+         }
+       }
+
+       inv_error_t error = mpu_9250_dmp_begin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
+                    DMP_FEATURE_GYRO_CAL, // Use gyro calibration
+                   CONFIG_MPU9250_DMP_RATE); // Set DMP FIFO rate to 200 Hz
+       // DMP_FEATURE_LP_QUAT can also be used. It uses the
+       // accelerometer in low-power mode to estimate quat's.
+       // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
+       // TOOD: Check for error
+       ESP_LOGI(tag, "MPU9250 Initialized: %d\n", error);
+
+
+   */
 
    // xTaskCreatePinnedToCore(&task_stepper_control2, "imuReadTask2", 2048, NULL, 5, NULL, 0);
 
-    xTaskCreate(&task_servoSweep, "stepperTask", 2048, NULL, 5, NULL);
+   // xTaskCreate(&task_servoSweep, "stepperTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 
@@ -297,79 +320,6 @@ void app_main(void)
    //     ESP_LOGI(tag, "Frequency: %d\n", i);
    //     vTaskDelay(500 / portTICK_PERIOD_MS);
    // }
-
-/*
-    // Init i2c
-    i2c_init(22, 21);
-
-    // Make sure everything is up and ready
-    delay_ms(500);
-
-
-    // Begin IMU Setup
-
-
-    // Call imu.begin() to verify communication and initialize
-    if (mpu_9250_begin() != INV_SUCCESS)
-    {
-    	ESP_LOGE(tag, "Error Initializing MPU9250 IMU.\n");
-      while (1) // Cannot Continue.  Loop Forever with delay a bit
-      {
-    	    delay(5000);
-      }
-    }
-
-    ESP_LOGI(tag, "MPU9250 Initialized...\n");
-
-    inv_error_t error = mpu_9250_dmp_begin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
-                 DMP_FEATURE_GYRO_CAL, // Use gyro calibration
-                200); // Set DMP FIFO rate to 200 Hz
-    // DMP_FEATURE_LP_QUAT can also be used. It uses the
-    // accelerometer in low-power mode to estimate quat's.
-    // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
-    ESP_LOGI(tag, "MPU9250 Initialized: %d\n", error);
-
-    // Init Sensor
-
- //   if(mpu_9250_init() != 0)
-   // {
-   // 	ESP_LOGE(tag, "Error Initializing MPU9250 IMU.\n");
-   // 	while(1); // Cannot Continue.  Loop Forver
-  //  }
-
-
-    xTaskCreatePinnedToCore(&task_imu_reader_task, "imuReadTask", 2048, NULL, 5, NULL, 0);
-
-    ESP_LOGI(tag, "Created IMU Polling Task");
-    // Test ADC
-
-   // printf("Hello World!\n");
-//    tcpip_adapter_init();
-//    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
-//    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-//    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-//    ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
-//    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
-//    wifi_config_t sta_config = {
-//        .sta = {
-//            .ssid = "access_point_name",
-//            .password = "password",
-//            .bssid_set = false
-//        }
-//    };
-//    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
-//    ESP_ERROR_CHECK( esp_wifi_start() );
-//    ESP_ERROR_CHECK( esp_wifi_connect() );
-//
-//    gpio_set_direction(GPIO_NUM_27, GPIO_MODE_OUTPUT);
-//    int level = 0;
-//    while (1) {
-//        gpio_set_level(GPIO_NUM_27, level);
-//        level = !level;
-//        //printf("Blink\n");
-  //      vTaskDelay(1000 / portTICK_PERIOD_MS);
-//    }*/
-
 
 }
 

@@ -1,0 +1,18 @@
+
+menu "AR6115e Configuration"
+
+# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
+config AR6115_USE_DEBUG_SERVICE
+    bool "Enable Network Debug"
+    default n
+    help
+        Enable debug over server socket.
+
+config AR6115_DEBUG_PORT
+    int "Port Number"
+    depends on AR6115_USE_DEBUG_SERVICE
+    default ""
+    help
+        Port number for debug service to listen.
+
+endmenu

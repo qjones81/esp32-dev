@@ -15,6 +15,8 @@
 #include "mpu_9250.h"
 #include "i2c/i2c.h"
 #include "utils/utils.h"
+#include "sockets/socket_server.h"
+
 static char tag[] = "mpu_9250";
 
 const signed char defaultOrientation[9] = {
@@ -23,12 +25,11 @@ const signed char defaultOrientation[9] = {
 	0, 0, 1
 };
 
-
 int ax, ay, az;
 int gx, gy, gz;
 int mx, my, mz;
 long qw, qx, qy, qz;
-long temperature;
+float temperature;
 uint32_t _time;
 float pitch, roll, yaw;
 float heading;
@@ -47,6 +48,9 @@ uint32_t sumCount = 0;
 
 float deltat = 0.0f;                             // integration interval for both filter schemes
 uint32_t lastUpdate = 0, firstUpdate = 0, Now = 0;    // used to calculate integration interval
+
+// Socket for Debug
+socket_device_t *sock = NULL;
 
 float qToFloat(long number, unsigned char q)
 {
@@ -88,12 +92,27 @@ void task_imu_reader_task(void *ignore)
 			}
 		}
 
+		// Check non-dmp data
+		if(mpu_9250_data_available())
+		{
+		    // Update Compass
+            mpu_9250_update_compass();
+            mpu_9250_update_accel();
+            mpu_9250_update_gyro();
+
+            // Update Temperature
+            int16_t tempCount = mpu_9250_read_temp_data();  // Read the adc values
+            temperature = (tempCount / 340.0f) + 21.0f; // Temperature in degrees Centigrade
+
+            // Compute Heading
+            heading = mpu_9250_compute_heading();
+		}
+
 		Now = micros();
 		deltat = (float)((Now - lastUpdate)/1000000.0f) ; // set integration time by time elapsed since last filter update
 		lastUpdate = Now;
 
 		sum += deltat;
-
 
 		delt_t = millis() - count;
 		if (delt_t > 500) { // update LCD once per half-second independent of read rate
@@ -105,8 +124,7 @@ void task_imu_reader_task(void *ignore)
 			float q2 = mpu_9250_calc_quat(qy);
 			float q3 = mpu_9250_calc_quat(qz);
 
-			int16_t tempCount = mpu_9250_read_temp_data();  // Read the adc values
-			float temperature = (tempCount / 340.0f) + 21.0f; // Temperature in degrees Centigrade
+
 //			ESP_LOGI(tag, "ax = %f", (float)ax/1000.0f);
 //			ESP_LOGI(tag, " ay = %f", (float)ay/1000.0f);
 //			ESP_LOGI(tag, " az = %f mg\n\r", (float)az/1000.0f);
@@ -122,6 +140,7 @@ void task_imu_reader_task(void *ignore)
 			ESP_LOGI(tag, "Q: %f %f %f %f\n", q0, q1, q2, q3);
 			ESP_LOGI(tag, "R/P/Y: %f %f %f\n", roll, pitch, yaw);
 			ESP_LOGI(tag, "Temp: %f\n", temperature);
+			ESP_LOGI(tag, "Heading: %f\n", heading);
 			ESP_LOGI(tag, "Time: %d\n", _time);
 
 			count = millis();
@@ -134,7 +153,23 @@ void task_imu_reader_task(void *ignore)
 	vTaskDelete(NULL);
 }
 
+#if defined(CONFIG_MPU9250_USE_DEBUG_SERVICE)
+void task_mpu9250_socket_debug(void *ignore)
+{
+    ESP_LOGD(tag, ">> task_mpu9250_socket_debug");
+    while (1) {
+        char str[80];
+        // TODO: Mutex Here or does volatile work here?
+        //float a_sens_inv = 1.0 / _aSense;
+        sprintf(str, "%f:%f\n",  heading, temperature);
 
+        //ESP_LOGI(tag, "%s",str);
+        socket_server_send_data(sock, (uint8_t *)str, strlen(str) + 1);
+        vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+#endif
 
 
 inv_error_t mpu_9250_begin(void)
@@ -156,10 +191,23 @@ inv_error_t mpu_9250_begin(void)
 
 	mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL | INV_XYZ_COMPASS);
 
-	_gSense = mpu_9250_get_gyro_sens();
-	_aSense = mpu_9250_get_accel_sens();
+	_gSense = mpu_9250_get_gyro_sens()/32768.0;
+	_aSense = mpu_9250_get_accel_sens()/32768.0;
 
 	ESP_LOGI(tag, "MPU9250 is online.\n");
+
+	// SUCCESS:  Now start required task/services
+	xTaskCreate(&task_imu_reader_task, "mpu9250_task", 2048, NULL, 3, NULL);
+
+	#if defined(CONFIG_MPU9250_USE_DEBUG_SERVICE)
+	        sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+	        sock->port = CONFIG_MPU9250_DEBUG_PORT;
+	        socket_server_init(sock);
+	        socket_server_start(sock);
+
+	        xTaskCreate(&task_mpu9250_socket_debug, "mpu9250_socket_task", 2048, NULL, 3, NULL);
+	#endif
+
 	return result;
 }
 
@@ -242,8 +290,8 @@ unsigned short mpu_9250_fifo_available(void)
 {
 	unsigned char fifoH, fifoL;
 
-	fifoH = i2c_read_byte(0x68, MPU9250_FIFO_COUNTH);
-	fifoL = i2c_read_byte(0x68, MPU9250_FIFO_COUNTL);
+	fifoH = i2c_read_byte(CONFIG_MPU9250_DEFAULT_ADDRESS, MPU9250_FIFO_COUNTH);
+	fifoL = i2c_read_byte(CONFIG_MPU9250_DEFAULT_ADDRESS, MPU9250_FIFO_COUNTL);
 	/*if (mpu_read_reg(MPU9250_FIFO_COUNTH, &fifoH) != INV_SUCCESS)
 	{
 		ESP_LOGI(tag, "FIFO H 0.\n");
@@ -333,5 +381,69 @@ void mpu_9250_compute_euler_angles(bool degrees)
 		if (yaw < 0) yaw = 360.0 + yaw;
 	}
 }
+int mpu_9250_update_accel(void)
+{
+    short data[3];
+    unsigned long time;
+    if (mpu_get_accel_reg(data, &time))
+    {
+        return INV_ERROR;
+    }
+    ax = data[X_AXIS];
+    ay = data[Y_AXIS];
+    az = data[Z_AXIS];
+    return INV_SUCCESS;
+}
+
+int mpu_9250_update_gyro(void)
+{
+    short data[3];
+    unsigned long time;
+    if (mpu_get_gyro_reg(data, &time))
+    {
+        return INV_ERROR;
+    }
+    gx = data[X_AXIS];
+    gy = data[Y_AXIS];
+    gz = data[Z_AXIS];
+    return INV_SUCCESS;
+}
+int mpu_9250_update_compass()
+{
+    short data[3];
+    unsigned long time;
+    if(mpu_get_compass_reg(data, &time))
+    {
+        return INV_ERROR;
+    }
+    mx = data[X_AXIS];
+    my = data[Y_AXIS];
+    mz = data[Z_AXIS];
+    return INV_SUCCESS;
+}
 
 
+float mpu_9250_compute_heading(void)
+{
+    if (my == 0)
+        heading = (mx < 0) ? 180.0 : 0;
+    else
+        heading = atan2(mx, my);
+
+    if (heading > PI) heading -= (2 * PI);
+    else if (heading < -PI) heading += (2 * PI);
+    else if (heading < 0) heading += 2 * PI;
+
+    heading*= 180.0 / PI;
+
+    return heading;
+}
+
+bool mpu_9250_data_available()
+{
+    uint8_t intStatusReg;
+    if (mpu_read_reg(MPU9250_INT_STATUS, &intStatusReg) == INV_SUCCESS) {
+        return (intStatusReg & (1<<INT_STATUS_RAW_DATA_RDY_INT));
+    }
+    return 0;
+}
