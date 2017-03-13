@@ -48,6 +48,7 @@ typedef struct {
 } socket_device_t;
 
 
+
 /**
  * @brief Initializes a socket server
  * @param device: Pointer to socket device to initialize.  Modifies data in the structure.

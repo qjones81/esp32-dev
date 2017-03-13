@@ -47,7 +47,7 @@ esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin)
 
 	return ret;
 }
-esp_err_t spi_add_device(uint8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev)
+esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev)
 {
 	esp_err_t ret;
 
@@ -96,7 +96,7 @@ esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx
 
     spi_transaction_t trans_desc;
     memset(&trans_desc, 0, sizeof(trans_desc));
-    trans_desc.address = address;
+    trans_desc.address = 0;
     trans_desc.command = 0;
     trans_desc.flags = 0;
     trans_desc.length = length * 8;

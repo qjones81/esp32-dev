@@ -45,7 +45,7 @@ void task_server_listener(void *data) {
         if (temp_sock == -1) {
             ESP_LOGE(tag, "ERROR:  Unable to accept client connection:  accept(): %s", strerror(errno));
         }
-        ESP_LOGD(tag, "New client connected! [%d]", socket_server_connected_count(sock));
+
 
         // TODO: Need more handling here for multiple client connections
         if (sock->client_sock != -1) { // Socket already open.  Need to close old.
@@ -55,6 +55,8 @@ void task_server_listener(void *data) {
             }
         }
         sock->client_sock = temp_sock;
+
+        ESP_LOGD(tag, "New client connected! [%d]", socket_server_connected_count(sock));
     }
 } // acceptTask
 
@@ -98,23 +100,33 @@ void socket_server_send_data(socket_device_t *device, uint8_t *data, size_t leng
         ESP_LOGE(tag, "ERROR: Client connection closed");
 
         // TODO: Remove connection and don't send BLAH BLAH
+        socket_server_disconnect(device);
         return;
     }
 
-    int ret = send(device->client_sock, data, length, 0);
-    if (ret == -1) {
+    int sent_bytes = send(device->client_sock, data, length, 0);
+    if (sent_bytes == -1) {
         ESP_LOGE(tag, "ERROR:  Unable to send data:  send(): %s",
                 strerror(errno));
+
+        if (errno == ECONNRESET) {
+            // TODO: Remove connection and don't send BLAH BLAH
+            socket_server_disconnect(device);
+            return;
+        }
     }
+    ESP_LOGI(tag, "Sent Bytes: %d", sent_bytes);
 }
 void socket_server_start(socket_device_t *device)
 {
     // TODO: Should check for socket already open.  Either close or error out here.
 
     device->server_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
     if (device->server_sock == -1) {
         ESP_LOGE(tag, "ERROR: Unable to create socket:  socket(): %s", strerror(errno));
     }
+
 
     struct sockaddr_in server_address;
     server_address.sin_family = AF_INET;
@@ -130,6 +142,9 @@ void socket_server_start(socket_device_t *device)
         ESP_LOGE(tag, "listen(): %s", strerror(errno));
     }
 
+    // Set no delay options
+    //int flag = 1;
+    ////setsockopt(device->server_sock, IPPROTO_TCP, TCP_NODELAY, (char *)flag, sizeof(int));
     ESP_LOGD(tag, "Now listening on port %d", device->port);
 
     xTaskCreate(&task_server_listener, "tcp_listen_task", 2048, device, 3, NULL);

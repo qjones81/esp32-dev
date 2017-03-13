@@ -20,13 +20,13 @@ config ADNS3080_DEFAULT_COUNTS_PER_INCH
     default 1600 if ADNS3080_DEFAULT_COUNTS_PER_INCH_1600
 
 config ADNS3080_ENABLE_FRAME_CAPTURE
-    bool "Enable frame capture mode to grab image frame data"
+    bool "Enable frame capture mode"
     default n
     help
-        Enable frame capture mode for image acquisition.
+        Enable frame capture mode for image acquisition.  If this is set navigation/optical flow mode will be disabled
 
 config ADNS3080_FRAME_CAPTURE_UPDATE_PERIOD
-    int "ADNS Frame Grab Update Rate (ms)"
+    int "ADNS frame grab update rate (ms)"
     depends on ADNS3080_ENABLE_FRAME_CAPTURE
     default 50
     range 30 1000

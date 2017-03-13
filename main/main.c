@@ -118,14 +118,13 @@ void task_servoSweep(void *ignore) {
 }
 void app_main(void)
 {
-   // gpio_pad_select_gpio(GPIO_NUM_4);
-   // gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+
 
     nvs_flash_init();
 
     //   amis_30543_device_t amis_test;
 
-   adns_3080_device_t adns_test;
+
 
     // Init SPI Bus
     ESP_LOGI(tag, "Initializing SPI Bus...\n");
@@ -173,19 +172,22 @@ void app_main(void)
    // ESP_LOGI(tag, "AMIS-30543 Initialized.\n");
     //ESP_LOGI(tag, "int %d, long %d.\n", sizeof(int32_t), sizeof(long));
 
+    adns_3080_device_t *adns_test = (adns_3080_device_t *) malloc(sizeof(adns_3080_device_t));
+
     // Pin 5, 2Mhz, Mode 0
         ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
-        ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_26, 1000000, 3, &adns_test.spi_device)); // TODO: Pass In Values
+        ESP_ERROR_CHECK(spi_add_device(-1, 2000000, 3, &adns_test->spi_device)); // TODO: Pass In Values
         ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
 
 
         // Setup Pins
-        adns_test.reset_pin = GPIO_NUM_4;
-        adns_test.cs_pin = GPIO_NUM_5;
-        adns_test.x = 0;
-        adns_test.y = 0;
 
-        adns_3080_init(&adns_test);
+        adns_test->reset_pin = GPIO_NUM_4;
+        adns_test->cs_pin = GPIO_NUM_13;
+        adns_test->x = 0;
+        adns_test->y = 0;
+
+        adns_3080_init(adns_test);
 
        // xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
   //  ESP_LOGI(tag, "Clock Frequency: %d.\n", APB_CLK_FREQ);

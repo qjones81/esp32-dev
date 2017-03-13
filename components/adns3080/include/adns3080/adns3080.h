@@ -79,13 +79,44 @@ enum adns3080_register {
 
 typedef struct
 {
+    uint8_t motion;
+    int8_t dx, dy;
+    uint8_t squal;
+    uint16_t shutter;
+    uint8_t max_pixel;
+} motion_struct_t;
+
+typedef struct
+{
     uint8_t reset_pin;      // Reset pin
     gpio_num_t cs_pin;      // CS pin
     int32_t x;              // X Pos
     int32_t y;              // Y Pos
+    motion_struct_t motion_buf;
     spi_device_handle_t spi_device; // Device handle for spi communications
 
 } adns_3080_device_t;
+
+
+/**
+ * @brief Struct to hold network packet header
+ */
+
+typedef struct {
+        uint16_t packet_type;
+        uint16_t packet_length;
+        uint16_t frame_width;
+        uint16_t frame_height;
+} frame_debug_header_t;
+
+/**
+ * @brief Struct to hold network packet for image data
+ */
+
+typedef struct {
+    frame_debug_header_t header;
+    uint8_t frame_data[ADNS3080_PIXELS_X * ADNS3080_PIXELS_Y]; // 900 pixels/bytes
+} frame_debug_packet_t;
 
 /**
  * @brief Initializes ADNS-3080
