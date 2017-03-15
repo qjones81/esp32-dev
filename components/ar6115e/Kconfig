@@ -11,7 +11,7 @@ config AR6115_USE_DEBUG_SERVICE
 config AR6115_DEBUG_PORT
     int "Port Number"
     depends on AR6115_USE_DEBUG_SERVICE
-    default ""
+    default 9001
     help
         Port number for debug service to listen.
 

@@ -35,7 +35,7 @@ config MPU9250_USE_DEBUG_SERVICE
 config MPU9250_DEBUG_PORT
     int "Port Number"
     depends on MPU9250_USE_DEBUG_SERVICE
-    default ""
+    default 9001
     help
         Port number for debug service.
 

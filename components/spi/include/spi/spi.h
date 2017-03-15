@@ -64,7 +64,7 @@ esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin);
  * @param SPI_Mode: SPI device transfer mode, (0, 1, 2 or 3)
  * @param spi_device_handle_t: Return reference for created SPI device
  */
-esp_err_t spi_add_device(uint8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev);
+esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev);
 
 /**
  * @brief SPI Device transfer routine
