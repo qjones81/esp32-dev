@@ -1,0 +1,70 @@
+
+menu "ADNS-3080 Optical Sensor Configuration"
+
+# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
+choice ADNS3080_DEFAULT_COUNTS_PER_INCH
+    prompt "Counts per inch resolution"
+    default ADNS3080_DEFAULT_COUNTS_PER_INCH_1600
+    help
+        Set optical sensor device resolution.  Supports 2 modes.  400/1600 CPI.
+
+config ADNS3080_DEFAULT_COUNTS_PER_INCH_400
+    bool "400"
+config ADNS3080_DEFAULT_COUNTS_PER_INCH_1600
+    bool "1600"
+endchoice
+
+config ADNS3080_DEFAULT_COUNTS_PER_INCH
+    int
+    default 400 if ADNS3080_DEFAULT_COUNTS_PER_INCH_400
+    default 1600 if ADNS3080_DEFAULT_COUNTS_PER_INCH_1600
+
+config ADNS3080_ENABLE_FRAME_CAPTURE
+    bool "Enable frame capture mode to grab image frame data"
+    default n
+    help
+        Enable frame capture mode for image acquisition.  If this is set navigation/optical flow mode will be disabled
+
+config ADNS3080_FRAME_CAPTURE_UPDATE_PERIOD
+    int "ADNS Frame Grab Update Rate (ms)"
+    depends on ADNS3080_ENABLE_FRAME_CAPTURE
+    default 50
+    range 30 1000
+    help
+        When in image grab mode how often to grab a new image for processing, in ms.  Valid options: 10 - 1000
+
+config ADNS3080_USE_FRAME_DEBUG_SERVICE
+    depends on ADNS3080_ENABLE_FRAME_CAPTURE
+    bool "Enable Frame Capture Network Debug"
+    default n
+    help
+        Enable frame image debug over server socket.
+
+config ADNS3080_FRAME_DEBUG_PORT
+    int "Port Number"
+    depends on ADNS3080_USE_FRAME_DEBUG_SERVICE
+    default ""
+    help
+        Port number for debug service.
+
+config ADNS3080_OPTICAL_FLOW_UPDATE_PERIOD
+    int "ADNS-3080 sensor update rate (ms)"
+    default 5
+    range 1 1000
+    help
+        When in pure sensor mode how often to grab a new state information, in hz.  Valid options: 1 - 1000
+
+config ADNS3080_USE_OPTICAL_FLOW_DEBUG_SERVICE
+    bool "Enable Optical Flow Network Debug"
+    default n
+    help
+        Enable optical flow debug over server socket.
+
+config ADNS3080_OPTICAL_FLOW_DEBUG_PORT
+    int "Port Number"
+    depends on ADNS3080_USE_OPTICAL_FLOW_DEBUG_SERVICE
+    default ""
+    help
+        Port number for debug service.
+
+endmenu

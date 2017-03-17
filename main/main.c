@@ -10,14 +10,18 @@
 #include "driver/rmt.h"
 #include "i2c/i2c.h"
 #include "spi/spi.h"
-#include "mpu9250_dmp/mpu_9250.h"
-#include "amis_30543/amis_30543.h"
-#include "adns3080/adns3080.h"
-#include "stepper/stepper.h"
-#include "ar6115e/ar6115e.h"
+//#include "mpu9250_dmp/mpu_9250.h"
+//#include "amis_30543/amis_30543.h"
+//#include "adns3080/adns3080.h"
+//#include "stepper/stepper.h"
+//#include "ar6115e/ar6115e.h"
 #include "utils/utils.h"
 #include "wifi/wifi.h"
-#include "sockets/socket_server.h"
+
+#include <string.h>
+
+#include "qrobot/qrobot.h"
+//#include "sockets/socket_server.h"
 
 // WARNING.  THIS FILE IS A MESS.  JUST A PLACEHOLDER FOR TESTING NEW FUNCTIONS/FEATURES AS I ADD THEM.  WILL WORKING CORE TEST FUNCTIONS SOON.
 
@@ -26,30 +30,15 @@
 //    return ESP_OK;
 //}
 
-static char tag[] = "MPU9250_DMP_TEST";
+static char tag[] = "ROBOT_MAIN";
 
 extern void task_stepper_control(void *ignore);
 extern void task_stepper_control2(void *ignore);
 extern void task_adns3080_reader_task(void *ignore);
 extern void task_imu_reader_task(void *ignore);
 
-adns_3080_device_t adns_test_2;
-// TODO: Move this to another file/task. For testing
-void spektrum_handler(pulse_event_t event)
-{
-    // TODO: Blah set speed
-    int max_speed = 50000;
+//adns_3080_device_t adns_test_2;
 
-    // Aileron Left = 2000, Right = 1000
-    // Throttle Down = 1000, Up = 2000
-
-    long output_speed = map(event.pulse_width, 1100, 1900, -100, 100);
-
-    //ESP_LOGI(tag, "Hello: %d\n", (int32_t)output_speed);
-
-        //ESP_LOGI(tag, "Hello: %f\n", max_speed * (output_speed / 100.0));
-   // stepper_control_set_speed(STEPPER_MOTOR_1, max_speed * (output_speed / 100.0));
-}
 
 void task_servoSweep(void *ignore) {
 //    int bitSize         = 15;
@@ -145,7 +134,11 @@ void app_main(void)
 
     // TODO: Delay and Wait for IP address
     // POLL For Connection
- //   delay_ms(10000);
+    delay_ms(5000);
+
+    qrobot_init();
+
+    qrobot_start();
 
 /*
     // Pin 5, 1Mhz, Mode 0
@@ -170,24 +163,6 @@ void app_main(void)
 */
 
    // ESP_LOGI(tag, "AMIS-30543 Initialized.\n");
-    //ESP_LOGI(tag, "int %d, long %d.\n", sizeof(int32_t), sizeof(long));
-
-    adns_3080_device_t *adns_test = (adns_3080_device_t *) malloc(sizeof(adns_3080_device_t));
-
-    // Pin 5, 2Mhz, Mode 0
-        ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
-        ESP_ERROR_CHECK(spi_add_device(-1, 2000000, 3, &adns_test->spi_device)); // TODO: Pass In Values
-        ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
-
-
-        // Setup Pins
-
-        adns_test->reset_pin = GPIO_NUM_4;
-        adns_test->cs_pin = GPIO_NUM_13;
-        adns_test->x = 0;
-        adns_test->y = 0;
-
-        adns_3080_init(adns_test);
 
        // xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
   //  ESP_LOGI(tag, "Clock Frequency: %d.\n", APB_CLK_FREQ);

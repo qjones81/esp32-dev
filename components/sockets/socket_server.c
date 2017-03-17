@@ -29,6 +29,10 @@
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_event_loop.h"
+#include <string.h>
+#include <errno.h>
+
+
 #include "socket_server.h"
 
 static const char *tag = "socket_server";
@@ -37,11 +41,11 @@ static const char *tag = "socket_server";
 void task_server_listener(void *data) {
 
     socket_device_t *sock = (socket_device_t *)data;
-    struct sockaddr_in clinet_address;
+    struct sockaddr_in client_address;
 
     while(1) {
-        socklen_t clinet_address_len = sizeof(clinet_address);
-        int temp_sock = accept(sock->server_sock, (struct sockaddr *)&clinet_address, &clinet_address_len);
+        socklen_t client_address_len = sizeof(client_address);
+        int temp_sock = accept(sock->server_sock, (struct sockaddr *)&client_address, &client_address_len);
         if (temp_sock == -1) {
             ESP_LOGE(tag, "ERROR:  Unable to accept client connection:  accept(): %s", strerror(errno));
         }

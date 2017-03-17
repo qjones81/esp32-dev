@@ -313,7 +313,3 @@ void adns_3080_reset(adns_3080_device_t *device)
     delay_us(500); // Give device time to wake up
 }
 
-void amis_30543_apply(adns_3080_device_t device)
-{
-
-}

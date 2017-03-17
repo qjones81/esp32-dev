@@ -10,13 +10,27 @@ import socket
 import struct
 import pyqtgraph
 
-class ExampleApp(QtGui.QMainWindow, qdacc_ui.Ui_MainWindow):
+class QRobotControlCenterApp(QtGui.QMainWindow, qdacc_ui.Ui_MainWindow):
     def __init__(self, parent=None):
         #pyqtgraph.setConfigOption('background', 'w') #before loading widget
-        super(ExampleApp, self).__init__(parent)
+        super(QRobotControlCenterApp, self).__init__(parent)
         self.setupUi(self)
         self.connectBtn.clicked.connect(self.connect)
+        self.updateBtn.clicked.connect(self.updateParameters)
         self.plot_ul.plotItem.showGrid(True, True, 0.7)
+        self.connected = False
+
+    def updateParameters(self):
+        print("Updating Parameters")
+        self.sock.send("Hello")
+        #self.sock.recv()
+        #TODO Set Values
+
+    def handleConnectBtn(self):
+        if(self.connected):
+            disconnect()
+        else:
+            connect()
 
     def connect(self):
         print(self.hostAddressEdit.text())
@@ -24,6 +38,13 @@ class ExampleApp(QtGui.QMainWindow, qdacc_ui.Ui_MainWindow):
         port = int(self.portEdit.text())
         self.sock = socket.socket()
         self.sock.connect((host, port))
+        self.connected = True
+        self.connectBtn.setText("Disconnect")
+
+    def disconnect(self):
+        self.sock.close()
+        self.connected = False;
+        self.connectBtn.setText("Connect")
 
     def update(self):
         t1=time.clock()
@@ -38,7 +59,7 @@ class ExampleApp(QtGui.QMainWindow, qdacc_ui.Ui_MainWindow):
 
 if __name__=="__main__":
     app = QtGui.QApplication(sys.argv)
-    form = ExampleApp()
+    form = QRobotControlCenterApp()
     form.show()
     form.update() #start with something
     app.exec_()

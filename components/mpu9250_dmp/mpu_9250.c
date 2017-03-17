@@ -50,7 +50,7 @@ float deltat = 0.0f;                             // integration interval for bot
 uint32_t lastUpdate = 0, firstUpdate = 0, Now = 0;    // used to calculate integration interval
 
 // Socket for Debug
-socket_device_t *sock = NULL;
+static socket_device_t *sock = NULL;
 
 float qToFloat(long number, unsigned char q)
 {
@@ -117,7 +117,7 @@ void task_imu_reader_task(void *ignore)
 		delt_t = millis() - count;
 		if (delt_t > 500) { // update LCD once per half-second independent of read rate
 
-			ESP_LOGI(tag, "average rate = %f\n\r", (float) sumCount/sum);
+			//ESP_LOGI(tag, "average rate = %f\n\r", (float) sumCount/sum);
 
 			float q0 = mpu_9250_calc_quat(qw);
 			float q1 = mpu_9250_calc_quat(qx);
@@ -137,11 +137,11 @@ void task_imu_reader_task(void *ignore)
 //			ESP_LOGI(tag, " my = %d", my);
 //			ESP_LOGI(tag, " mz = %d  mG\n\r", mz);
 
-			ESP_LOGI(tag, "Q: %f %f %f %f\n", q0, q1, q2, q3);
-			ESP_LOGI(tag, "R/P/Y: %f %f %f\n", roll, pitch, yaw);
-			ESP_LOGI(tag, "Temp: %f\n", temperature);
-			ESP_LOGI(tag, "Heading: %f\n", heading);
-			ESP_LOGI(tag, "Time: %d\n", _time);
+			//ESP_LOGI(tag, "Q: %f %f %f %f\n", q0, q1, q2, q3);
+			//ESP_LOGI(tag, "R/P/Y: %f %f %f\n", roll, pitch, yaw);
+			//ESP_LOGI(tag, "Temp: %f\n", temperature);
+			//ESP_LOGI(tag, "Heading: %f\n", heading);
+			//ESP_LOGI(tag, "Time: %d\n", _time);
 
 			count = millis();
 			sum = 0;
@@ -180,7 +180,6 @@ inv_error_t mpu_9250_begin(void)
 	struct int_param_s int_param;
 
 	// TODO: Start i2c here.  Check for bool if already started?
-	//Wire.begin();
 
 	result = mpu_init(&int_param);
 

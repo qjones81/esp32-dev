@@ -70,6 +70,9 @@ void task_stepper_control(void *ignore)
 
 void stepper_control_start()
 {
+    // Start Control Task
+    xTaskCreatePinnedToCore(&task_stepper_control, "stepper_control", 2048, NULL, 7, NULL, 1);
+
     // Create Semaphore
    // vSemaphoreCreateBinary(timer_tick);
     //timer_queue = xQueueCreate(10, sizeof(timer_event_t));

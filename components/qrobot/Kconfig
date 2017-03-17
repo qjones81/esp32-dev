@@ -1,0 +1,18 @@
+
+menu "QRobot Configuration"
+
+# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
+config QROBOT_USE_DEBUG_SERVICE
+    bool "Enable Network Debug"
+    default n
+    help
+        Enable debug over server socket.
+
+config QROBOT_DEBUG_PORT
+    int "Port Number"
+    depends on QROBOT_USE_DEBUG_SERVICE
+    default 9000
+    help
+        Port number for debug service to listen.
+
+endmenu

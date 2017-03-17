@@ -55,7 +55,7 @@
     <property name="title">
      <string>Robot Parameters</string>
     </property>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>0</x>
@@ -430,7 +430,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>0</x>
@@ -452,7 +452,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QWidget" name="">
+    <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
        <x>0</x>
@@ -478,12 +478,6 @@
       </item>
      </layout>
     </widget>
-    <zorder></zorder>
-    <zorder></zorder>
-    <zorder>sendUserCommandBtn</zorder>
-    <zorder>userCommandEdit</zorder>
-    <zorder>updateRateEdit</zorder>
-    <zorder>label_19</zorder>
    </widget>
    <widget class="QGroupBox" name="groupBox_6">
     <property name="geometry">
@@ -525,7 +519,7 @@
         <item>
          <widget class="QLineEdit" name="hostAddressEdit">
           <property name="text">
-           <string>10.10.4.127</string>
+           <string>10.10.4.137</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -571,7 +565,7 @@
      </layout>
     </widget>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>280</x>
@@ -607,18 +601,8 @@
      </item>
     </layout>
    </widget>
-   <zorder>label_2</zorder>
+   <zorder>layoutWidget</zorder>
    <zorder>horizontalLayoutWidget_3</zorder>
-   <zorder>gridLayoutWidget</zorder>
-   <zorder>plot_ul</zorder>
-   <zorder>plot_ur</zorder>
-   <zorder>plot_ll</zorder>
-   <zorder>plot_lr</zorder>
-   <zorder>groupBox</zorder>
-   <zorder>groupBox_2</zorder>
-   <zorder>groupBox_3</zorder>
-   <zorder>groupBox_4</zorder>
-   <zorder>updateBtn</zorder>
    <zorder>groupBox_5</zorder>
    <zorder>groupBox_6</zorder>
   </widget>

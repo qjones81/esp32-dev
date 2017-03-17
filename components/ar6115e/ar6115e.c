@@ -58,7 +58,8 @@ volatile uint16_t channel_value[CHANNEL_MAX] = { 0 };
 rc_event_cb_t rc_handler = NULL;
 
 // Socket for Debug
-socket_device_t *sock = NULL;
+static socket_device_t *sock = NULL;
+
 static void isr_handler(void *arg) {
 
     // TODO: Rollover Handling

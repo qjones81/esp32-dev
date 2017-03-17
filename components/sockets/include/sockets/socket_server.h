@@ -25,11 +25,6 @@
 #ifndef SOCKET_SERVER_H_
 #define SOCKET_SERVER_H_
 
-#include <lwip/sockets.h>
-#include <esp_log.h>
-#include <string.h>
-#include <errno.h>
-#include "sdkconfig.h"
 
 #ifdef __cplusplus
 extern "C"
