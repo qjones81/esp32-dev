@@ -23,11 +23,12 @@
  */
 
 #include "freertos/FreeRTOS.h"
+#include "esp_log.h"
 #include "driver/gpio.h"
 #include "spi/spi.h"
 #include "amis_30543.h"
 
-static const char *TAG = "amis_30543";
+static const char *tag = "amis_30543";
 
 void write_reg(uint8_t address, uint8_t data, spi_device_handle_t device)
 {
@@ -37,6 +38,20 @@ void write_reg(uint8_t address, uint8_t data, spi_device_handle_t device)
 	tx_data[1] = data;
 	spi_transfer(tx_data, rx_data, 2, device);
 }
+
+uint8_t read_reg(uint8_t address, spi_device_handle_t device)
+{
+    uint8_t tx_data[2];
+    uint8_t rx_data[2];
+    tx_data[0] = (address & 0b11111);
+    tx_data[1] = 0x00;
+    spi_transfer(tx_data, rx_data, 2, device);
+
+    ESP_LOGI(tag, "Read back: %d", rx_data[1]);
+
+    return rx_data[1];
+}
+
 
 // Write cached value of the WR register to the device.
 void write_WR(amis_30543_device_t device)
@@ -228,3 +243,11 @@ void amis_30543_pwm_frequency_double(amis_30543_device_t *device, bool enable_do
     }
 }
 
+bool amis_30543_verify(amis_30543_device_t *device)
+{
+    return (read_reg(WR, device->spi_device) == device->wr &&
+                read_reg(CR0, device->spi_device) == device->cr0 &&
+                read_reg(CR1, device->spi_device) == device->cr1 &&
+                read_reg(CR2, device->spi_device) == device->cr2 &&
+                read_reg(CR3, device->spi_device) == device->cr3);
+}

@@ -234,7 +234,7 @@ esp_err_t adns_3080_init(adns_3080_device_t *device)
     // Setup device pins
     gpio_pad_select_gpio(device->reset_pin);
     gpio_set_direction(device->reset_pin, GPIO_MODE_OUTPUT);
-    gpio_set_level(device->reset_pin, 1);
+    gpio_set_level(device->reset_pin, 0);
 
     gpio_pad_select_gpio(device->cs_pin);
     gpio_set_direction(device->cs_pin, GPIO_MODE_OUTPUT);

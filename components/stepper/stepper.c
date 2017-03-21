@@ -72,6 +72,7 @@ void stepper_control_start()
 {
     // Start Control Task
     xTaskCreatePinnedToCore(&task_stepper_control, "stepper_control", 2048, NULL, 7, NULL, 1);
+    //xTaskCreate(&task_stepper_control, "stepper_control", 2048, NULL, 7, NULL);
 
     // Create Semaphore
    // vSemaphoreCreateBinary(timer_tick);
@@ -95,9 +96,15 @@ void IRAM_ATTR control_isr(void *para)
 
     // Reload timer value
     TIMERG0.hw_timer[timer_idx].update = 1;
-    TIMERG0.int_clr_timers.t0 = 1;
+
     TIMERG0.hw_timer[timer_idx].config.alarm_en = 1;
 
+    if(timer_idx == 0) {
+        TIMERG0.int_clr_timers.t0 = 1;
+    }
+    else {
+        TIMERG0.int_clr_timers.t1 = 1;
+    }
 //    uint32_t intr_status = TIMERG0.int_st_timers.val;
 //    if(state == 0) {
 //        gpio_set_level(GPIO_NUM_16, 1);
@@ -107,11 +114,11 @@ void IRAM_ATTR control_isr(void *para)
 //        gpio_set_level(GPIO_NUM_16, 0);
 //        state = 0;
 //    }
-   // ESP_LOGI(tag, "Interrupt.");
+    //ESP_LOGI(tag, "Int: %d", timer_idx);
 
-    gpio_set_level(motor_devices[0]->cfg.step_pin, 1);
+   gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 1);
     delay_us(10);
-    gpio_set_level(motor_devices[0]->cfg.step_pin, 0);
+    gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 0);
 
 /*
     for(int i = 0; i < num_devices; i++)
@@ -180,6 +187,7 @@ void stepper_control_timer_init_0()
     //Start timer counter
     timer_start(TIMER_GROUP_0, TIMER_0);
 
+    ESP_LOGI(tag, "Init 0.");
 }
 
 void stepper_control_timer_init_1()
@@ -198,14 +206,16 @@ void stepper_control_timer_init_1()
     //Load counter value
     timer_set_counter_value(TIMER_GROUP_0, TIMER_1, 0x00000000ULL);
     //Set alarm value
-    //timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, LOOP_INTERVAL * TIMER_SCALE_US);
+    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, 2.0 * TIMER_SCALE_SEC);
     //Enable timer interrupt
     timer_enable_intr(TIMER_GROUP_0, TIMER_1);
     //Set ISR handler
     timer_isr_register(TIMER_GROUP_0, TIMER_1, control_isr, (void*) TIMER_1,
             ESP_INTR_FLAG_IRAM, NULL);
     //Start timer counter
-    //timer_start(TIMER_GROUP_0, TIMER_1);
+    timer_start(TIMER_GROUP_0, TIMER_1);
+
+    ESP_LOGI(tag, "Init 1.");
 
 }
 
@@ -225,7 +235,10 @@ esp_err_t stepper_control_add_device(stepper_motor_type_t motor_t, stepper_motor
     dev->cfg = dev_config;
 
     // Setup GPIO
+    gpio_pad_select_gpio(dev->cfg.step_pin);
     gpio_set_direction(dev->cfg.step_pin, GPIO_MODE_OUTPUT);
+
+    gpio_pad_select_gpio(dev->cfg.dir_pin);
     gpio_set_direction(dev->cfg.dir_pin, GPIO_MODE_OUTPUT);
 
     motor_devices[motor_t] = dev;
@@ -237,13 +250,27 @@ esp_err_t stepper_control_add_device(stepper_motor_type_t motor_t, stepper_motor
 void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
 {
     //Set alarm value
-    timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(steps_sec)) * TIMER_SCALE_SEC);
-
+    if(motor_t == STEPPER_MOTOR_1) {
+        if(steps_sec == 0)
+        {
+            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / 0.0001) * TIMER_SCALE_SEC);
+        }
+        else
+            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(steps_sec)) * TIMER_SCALE_SEC);
+    }
+    else {
+        if(steps_sec == 0)
+                {
+                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.0001) * TIMER_SCALE_SEC);
+                }
+                else
+                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(steps_sec)) * TIMER_SCALE_SEC);
+    }
     // 1 = clockwise, 0 = counter clockwise
     if(steps_sec <= 0)
-        gpio_set_level(motor_devices[STEPPER_MOTOR_1]->cfg.dir_pin, 1);
+        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, 1);
     else
-        gpio_set_level(motor_devices[STEPPER_MOTOR_1]->cfg.dir_pin, 0);
+        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, 0);
 }
 //
 //TickType_t get_stepper_control_ticks_per_second()

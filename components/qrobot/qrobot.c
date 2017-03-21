@@ -244,7 +244,10 @@ void ar6115e_input_handler(pulse_event_t event)
 
     }
 
-    // stepper_control_set_speed(STEPPER_MOTOR_1, max_speed * (output_speed / 100.0));
+   // ESP_LOGI(tag, "Steering: %d | Throttle: %d", (int)steering_input, (int)current_speed_target);
+    stepper_control_set_speed(STEPPER_MOTOR_1, min(10000, 10000 * (current_speed_target / 100.0)));
+    stepper_control_set_speed(STEPPER_MOTOR_2, min(10000, 10000 * (current_speed_target / 100.0)));
+
 }
 
 void qrobot_init_adns()
@@ -258,7 +261,7 @@ void qrobot_init_adns()
     ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
 
     // Setup Pins
-    adns_sensor->reset_pin = GPIO_NUM_4;
+    adns_sensor->reset_pin = GPIO_NUM_25;
     adns_sensor->cs_pin = GPIO_NUM_13;
     adns_sensor->x = 0;
     adns_sensor->y = 0;
@@ -281,21 +284,11 @@ void qrobot_init_mpu9250()
     delay_ms(250);
 
     // Begin IMU Setup
-    ESP_LOGI(tag, "MPU9250 Initializing...\n");
-    // Call imu.begin() to verify communication and initialize
+    // Call mpu_9250_begin() to verify communication and initialize
     if (mpu_9250_begin() != INV_SUCCESS) {
         ESP_LOGE(tag, "Error Initializing MPU9250 IMU.\n");
         return;
     }
-
-    inv_error_t error = mpu_9250_dmp_begin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
-            DMP_FEATURE_GYRO_CAL, // Use gyro calibration
-            CONFIG_MPU9250_DMP_RATE); // Set DMP FIFO rate to 200 Hz
-    // DMP_FEATURE_LP_QUAT can also be used. It uses the
-    // accelerometer in low-power mode to estimate quat's.
-    // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
-    // TOOD: Check for error
-    ESP_LOGI(tag, "MPU9250 Initialized: %d\n", error);
 }
 void qrobot_init_amis30543_drivers()
 {
@@ -311,7 +304,7 @@ void qrobot_init_amis30543_drivers()
     ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_5, 1000000, 0, &amis_motor_1->spi_device)); // TODO: Pass In Values
     ESP_LOGI(tag, "Successfully added AMIS-30543 (1).\n");
 
-    delay_ms(10);
+    delay_ms(100);
 
     ESP_LOGI(tag, "Initializing AMIS-30543 (1)...\n");
     amis_30543_init(amis_motor_1); // Init
@@ -320,7 +313,10 @@ void qrobot_init_amis30543_drivers()
     amis_30543_set_step_mode(amis_motor_1, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_left, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_1, true); // Enable motor output
-    ESP_LOGI(tag, "AMIS-30543 Initialized (1).\n");
+
+    // Verify Settings
+    bool verified = amis_30543_verify(amis_motor_1);
+    ESP_LOGI(tag, "AMIS-30543 Initialized (1) %d.\n", verified);
 
     // Right
     amis_motor_2 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
@@ -331,7 +327,7 @@ void qrobot_init_amis30543_drivers()
     ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_4, 1000000, 0, &amis_motor_2->spi_device)); // TODO: Pass In Values
     ESP_LOGI(tag, "Successfully added AMIS-30543 (2).\n");
 
-    delay_ms(10);
+    delay_ms(100);
 
     ESP_LOGI(tag, "Initializing AMIS-30543 (2)...\n");
     amis_30543_init(amis_motor_2); // Init
@@ -340,12 +336,14 @@ void qrobot_init_amis30543_drivers()
     amis_30543_set_step_mode(amis_motor_2, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_right, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_2, true); // Enable motor output
-    ESP_LOGI(tag, "AMIS-30543 Initialized (2).\n");
+
+    // Verify Settings
+    verified = amis_30543_verify(amis_motor_2);
+    ESP_LOGI(tag, "AMIS-30543 Initialized (2) %d.\n", verified);
 }
 
 void qrobot_init_stepper_motors()
 {
-    // TODO: Update pins to new board
     stepper_motor_device_config_t motor_1_cfg = { .step_pin = GPIO_NUM_17,
             .dir_pin = GPIO_NUM_16, .step_hold_delay = 10 };
 
@@ -360,28 +358,33 @@ void qrobot_init()
 {
     //Init sensors
     qrobot_init_mpu9250(); // Init IMU
-    qrobot_init_ar6115e(); // RC input
+
     qrobot_init_adns(); // Init ADNS
 
-    // Init Drivers
-    qrobot_init_amis30543_drivers(); // Init motor drivers
-
     //Init motors
-    qrobot_init_stepper_motors(); // Init Steppers
+   qrobot_init_stepper_motors(); // Init Steppers
+
+   // Init Drivers
+   qrobot_init_amis30543_drivers(); // Init motor drivers
+
+   // Init Control
+   qrobot_init_ar6115e(); // RC input
 
     //Init sockets
 
-    // TODO: Socket Handler
+#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
+    xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 4096, NULL, 3, NULL);
+#endif
+
     //POST
+   // stepper_control_set_speed(STEPPER_MOTOR_1, 5000);
+   // stepper_control_set_speed(STEPPER_MOTOR_2, 2000);
 }
 void qrobot_start()
 {
    // xTaskCreate(&task_qrobot_read, "qrobot_task", 2048, NULL, 3, NULL);
 
 
-#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
-    xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 4096, NULL, 3, NULL);
-#endif
 }
 
 

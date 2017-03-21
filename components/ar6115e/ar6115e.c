@@ -80,7 +80,7 @@ static void isr_handler(void *arg) {
 
 void task_ar6115e_read(void *ignore)
 {
-    ESP_LOGD(tag, ">> task_ar611e_read");
+    ESP_LOGD(tag, ">> task_ar6115e_read");
     while (1) {
         pulse_event_t pulse_event;
         // ESP_LOGD(tag, "Waiting on interrupt queue");

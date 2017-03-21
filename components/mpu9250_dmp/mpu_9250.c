@@ -195,6 +195,20 @@ inv_error_t mpu_9250_begin(void)
 
 	ESP_LOGI(tag, "MPU9250 is online.\n");
 
+    ESP_LOGI(tag, "Initializing DMP mode.\n");
+    inv_error_t error = mpu_9250_dmp_begin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
+            DMP_FEATURE_GYRO_CAL, // Use gyro calibration
+            CONFIG_MPU9250_DMP_RATE); // Set DMP FIFO rate to 200 Hz
+    // DMP_FEATURE_LP_QUAT can also be used. It uses the
+    // accelerometer in low-power mode to estimate quat's.
+    // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
+    // TOOD: Check for error
+    if (error == INV_ERROR) {
+        ESP_LOGE(tag, "ERROR:  Initializing MPU9250 DMP: %d\n", error);
+    } else {
+        ESP_LOGI(tag, "MPU9250 DMP Initialized.\n");
+    }
+
 	// SUCCESS:  Now start required task/services
 	xTaskCreate(&task_imu_reader_task, "mpu9250_task", 2048, NULL, 3, NULL);
 

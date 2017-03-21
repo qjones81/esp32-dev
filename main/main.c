@@ -10,7 +10,7 @@
 #include "driver/rmt.h"
 #include "i2c/i2c.h"
 #include "spi/spi.h"
-//#include "mpu9250_dmp/mpu_9250.h"
+#include "mpu9250_dmp/mpu_9250.h"
 //#include "amis_30543/amis_30543.h"
 //#include "adns3080/adns3080.h"
 //#include "stepper/stepper.h"
@@ -41,67 +41,67 @@ extern void task_imu_reader_task(void *ignore);
 
 
 void task_servoSweep(void *ignore) {
-//    int bitSize         = 15;
-//    int minValue        = 500;  // micro seconds (uS)
-//    int maxValue        = 2500; // micro seconds (uS)
-//    int sweepDuration   = 1500; // milliseconds (ms)
-//    int duty            = (1<<bitSize) * minValue / 20000 ;
-//    int direction       = 1; // 1 = up, -1 = down
-//    int valueChangeRate = 20; // msecs
-//
-//    ESP_LOGD(tag, ">> task_servo1");
-//    ledc_timer_config_t timer_conf;
-//    timer_conf.bit_num    = LEDC_TIMER_15_BIT;
-//    timer_conf.freq_hz    = 50;
-//    timer_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
-//    timer_conf.timer_num  = LEDC_TIMER_0;
-//    ledc_timer_config(&timer_conf);
-//
-//    ledc_channel_config_t ledc_conf;
-//    ledc_conf.channel    = LEDC_CHANNEL_0;
-//    ledc_conf.duty       = duty;
-//    ledc_conf.gpio_num   = 15;
-//    ledc_conf.intr_type  = LEDC_INTR_DISABLE;
-//    ledc_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
-//    ledc_conf.timer_sel  = LEDC_TIMER_0;
-//    ledc_channel_config(&ledc_conf);
-//
-//    int changesPerSweep = sweepDuration / valueChangeRate;
-//    int changeDelta = (maxValue-minValue) / changesPerSweep;
-//    int i;
-//    ESP_LOGD(tag, "sweepDuration: %d seconds", sweepDuration);
-//    ESP_LOGD(tag, "changesPerSweep: %d", changesPerSweep);
-//    ESP_LOGD(tag, "changeDelta: %d", changeDelta);
-//    ESP_LOGD(tag, "valueChangeRate: %d", valueChangeRate);
-//
-//    int test_duty = (32768) * 600 / 20000;
-//
-//
-//    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, test_duty);
-//                ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-//
-//    while(1) {
-//       /* for (i=700; i<2400; i+=20) {
-//
-//            duty = (1<<bitSize) * ((float)i / 20000);
-//            ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty);
-//            ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-//
-//            //ESP_LOGD(tag, "DUTY 1: %d", duty);
-//            //ESP_LOGD(tag, "DUTY: %f", (duty / (32768.0)) * 20000);
-//            vTaskDelay(30/portTICK_PERIOD_MS);
-//        }
-//        direction = -direction;
-//        ESP_LOGD(tag, "Direction now %d", direction);*/
-//
-//        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (2400.0 / 20000));
-//                   ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-//
-//                   vTaskDelay(5000/portTICK_PERIOD_MS);
-//        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (600.0 / 20000));
-//                    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-//        vTaskDelay(5000/portTICK_PERIOD_MS);
-//    } // End loop forever
+    int bitSize         = 15;
+    int minValue        = 500;  // micro seconds (uS)
+    int maxValue        = 2500; // micro seconds (uS)
+    int sweepDuration   = 1500; // milliseconds (ms)
+    int duty            = (1<<bitSize) * minValue / 20000 ;
+    int direction       = 1; // 1 = up, -1 = down
+    int valueChangeRate = 20; // msecs
+
+    ESP_LOGD(tag, ">> task_servo1");
+    ledc_timer_config_t timer_conf;
+    timer_conf.bit_num    = LEDC_TIMER_15_BIT;
+    timer_conf.freq_hz    = 50;
+    timer_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+    timer_conf.timer_num  = LEDC_TIMER_0;
+    ledc_timer_config(&timer_conf);
+
+    ledc_channel_config_t ledc_conf;
+    ledc_conf.channel    = LEDC_CHANNEL_0;
+    ledc_conf.duty       = duty;
+    ledc_conf.gpio_num   = 12;
+    ledc_conf.intr_type  = LEDC_INTR_DISABLE;
+    ledc_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+    ledc_conf.timer_sel  = LEDC_TIMER_0;
+    ledc_channel_config(&ledc_conf);
+
+    int changesPerSweep = sweepDuration / valueChangeRate;
+    int changeDelta = (maxValue-minValue) / changesPerSweep;
+    int i;
+    ESP_LOGD(tag, "sweepDuration: %d seconds", sweepDuration);
+    ESP_LOGD(tag, "changesPerSweep: %d", changesPerSweep);
+    ESP_LOGD(tag, "changeDelta: %d", changeDelta);
+    ESP_LOGD(tag, "valueChangeRate: %d", valueChangeRate);
+
+    int test_duty = (32768) * 600 / 20000;
+
+
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, test_duty);
+                ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+
+    while(1) {
+       /* for (i=700; i<2400; i+=20) {
+
+            duty = (1<<bitSize) * ((float)i / 20000);
+            ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty);
+            ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+
+            //ESP_LOGD(tag, "DUTY 1: %d", duty);
+            //ESP_LOGD(tag, "DUTY: %f", (duty / (32768.0)) * 20000);
+            vTaskDelay(30/portTICK_PERIOD_MS);
+        }
+        direction = -direction;
+        ESP_LOGD(tag, "Direction now %d", direction);*/
+
+        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (2400.0 / 20000));
+                   ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+
+                   vTaskDelay(5000/portTICK_PERIOD_MS);
+        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (600.0 / 20000));
+                    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+        vTaskDelay(5000/portTICK_PERIOD_MS);
+    } // End loop forever
 
     vTaskDelete(NULL);
 }
@@ -110,6 +110,8 @@ void app_main(void)
 
 
     nvs_flash_init();
+
+    //delay(5000);
 
     //   amis_30543_device_t amis_test;
 
@@ -120,6 +122,7 @@ void app_main(void)
     ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
     ESP_LOGI(tag, "SPI Bus Initialized.\n");
 
+    /*
     // Wifi Config
     wifi_config_t sta_config;
     memset(&sta_config, 0, sizeof(sta_config));
@@ -134,7 +137,7 @@ void app_main(void)
 
     // TODO: Delay and Wait for IP address
     // POLL For Connection
-    delay_ms(5000);
+    delay_ms(5000);*/
 
     qrobot_init();
 
@@ -206,7 +209,8 @@ void app_main(void)
     ar6115e_add_channel(AILERON, GPIO_NUM_14);
     ar6115e_start();*/
 
-    /* SAVE FOR IMU INIT!!!
+/*
+    // SAVE FOR IMU INIT!!!
        // Init i2c
        i2c_init(22, 21);
 
@@ -233,13 +237,14 @@ void app_main(void)
        // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
        // TOOD: Check for error
        ESP_LOGI(tag, "MPU9250 Initialized: %d\n", error);
+*/
 
 
-   */
+
 
    // xTaskCreatePinnedToCore(&task_stepper_control2, "imuReadTask2", 2048, NULL, 5, NULL, 0);
 
-   // xTaskCreate(&task_servoSweep, "stepperTask", 2048, NULL, 5, NULL);
+    xTaskCreate(&task_servoSweep, "stepperTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 
