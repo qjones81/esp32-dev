@@ -139,9 +139,9 @@ void app_main(void)
     // POLL For Connection
     delay_ms(5000);*/
 
-    qrobot_init();
+    //qrobot_init();
 
-    qrobot_start();
+    //qrobot_start();
 
 /*
     // Pin 5, 1Mhz, Mode 0
