@@ -1,98 +1,180 @@
+// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 
-/*
- * adc.h
- *
- *  Created on: Mar 22, 2017
- *      Author: qjones
- *
- * Copyright (c) <2017> <Quincy Jones - qjones@c4solutions.net/>
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software
- * is furnished to do so, subject to the following conditions:
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- */
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-#ifndef ADC_H_
-#define ADC_H_
-
-#include "esp32-hal-adc.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "rom/ets_sys.h"
-#include "esp_attr.h"
-#include "esp_intr.h"
-#include "soc/rtc_io_reg.h"
-#include "soc/rtc_cntl_reg.h"
-#include "soc/sens_reg.h"
+#ifndef _DRIVER_ADC_FULL_H_
+#define _DRIVER_ADC_FULL_H_
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-// Defaults for ESP32 SPI pinouts.  These can be remapped to other possible pins as well.  See TRM/Datasheet for options.
-#define SPI_MOSI    8
-#define SPI_MISO    7
-#define SPI_CLK     6
-#define SPI_CS      11
+#include <stdint.h>
+#include "esp_err.h"
 
-#define HSPI_MOSI   13
-#define HSPI_MISO   12
-#define HSPI_CLK    14
-#define HSPI_CS     15
+typedef enum {
+    ADC_ATTEN_0db   = 0,  /*!<The input voltage of ADC will be reduced to about 1/1 */
+    ADC_ATTEN_2_5db = 1,  /*!<The input voltage of ADC will be reduced to about 1/1.34 */
+    ADC_ATTEN_6db   = 2,  /*!<The input voltage of ADC will be reduced to about 1/2 */
+    ADC_ATTEN_11db  = 3,  /*!<The input voltage of ADC will be reduced to about 1/3.6*/
+} adc_atten_t;
 
-#define VSPI_MOSI   23
-#define VSPI_MISO   19
-#define VSPI_CLK    18
-#define VSPI_CS     5
+typedef enum {
+    ADC_WIDTH_9Bit  = 0, /*!< ADC capture width is 9Bit*/
+    ADC_WIDTH_10Bit = 1, /*!< ADC capture width is 10Bit*/
+    ADC_WIDTH_11Bit = 2, /*!< ADC capture width is 11Bit*/
+    ADC_WIDTH_12Bit = 3, /*!< ADC capture width is 12Bit*/
+} adc_bits_width_t;
+
+typedef enum {
+    ADC1_CHANNEL_0 = 0, /*!< ADC1 channel 0 is GPIO36 */
+    ADC1_CHANNEL_1,     /*!< ADC1 channel 1 is GPIO37 */
+    ADC1_CHANNEL_2,     /*!< ADC1 channel 2 is GPIO38 */
+    ADC1_CHANNEL_3,     /*!< ADC1 channel 3 is GPIO39 */
+    ADC1_CHANNEL_4,     /*!< ADC1 channel 4 is GPIO32 */
+    ADC1_CHANNEL_5,     /*!< ADC1 channel 5 is GPIO33 */
+    ADC1_CHANNEL_6,     /*!< ADC1 channel 6 is GPIO34 */
+    ADC1_CHANNEL_7,     /*!< ADC1 channel 7 is GPIO35 */
+    ADC1_CHANNEL_MAX,
+} adc1_channel_t;
+
+typedef enum {
+    ADC2_CHANNEL_0 = 0, /*!< ADC2 channel 0 is GPIO4 */
+    ADC2_CHANNEL_1,     /*!< ADC2 channel 1 is GPIO0 */
+    ADC2_CHANNEL_2,     /*!< ADC2 channel 2 is GPIO2 */
+    ADC2_CHANNEL_3,     /*!< ADC2 channel 3 is GPIO15 */
+    ADC2_CHANNEL_4,     /*!< ADC2 channel 4 is GPIO13 */
+    ADC2_CHANNEL_5,     /*!< ADC2 channel 5 is GPIO12 */
+    ADC2_CHANNEL_6,     /*!< ADC2 channel 6 is GPIO14 */
+    ADC2_CHANNEL_7,     /*!< ADC2 channel 7 is GPIO27 */
+    ADC2_CHANNEL_8,     /*!< ADC2 channel 8 is GPIO25 */
+    ADC2_CHANNEL_9,     /*!< ADC2 channel 9 is GPIO26 */
+    ADC2_CHANNEL_MAX,
+} adc2_channel_t;
 
 /**
- * @brief SPI Bus initialization routine
- * @param MOSI_pin: SPI Output pin (TX)
- * @param MISO_pin: SPI Input pin (RX)
- * @param CLK_pin: SPI Clock pin
+ * @brief Configuration ADC1 capture width.
+ *
+ * The configuration is in effect for all channels of ADC1
+ *
+ * @param  width_bit ADC1
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
  */
-esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin);
+esp_err_t adc_1_config_width(adc_bits_width_t width_bit);
 
 /**
- * @brief SPI Bus device add routine
- * @param CS_pin: SPI Chip Select pin
- * @param CLK_frequency: SPI Clock frequency
- * @param SPI_Mode: SPI device transfer mode, (0, 1, 2 or 3)
- * @param spi_device_handle_t: Return reference for created SPI device
+ * @brief Configuration ADC2 capture width.
+ *
+ * The configuration is in effect for all channels of ADC2
+ *
+ * @param  width_bit ADC2
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
  */
-esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev);
+esp_err_t adc_2_config_width(adc_bits_width_t width_bit);
 
 /**
- * @brief SPI Device transfer routine
- * @param tx_data: Data buffer to send
- * @param rx_data: Data buffer to receive.  NULL if write only operation
- * @param length: Transmission length in bytes
- * @param spi_device_handle_t: Return reference for created SPI device
+ * @brief Configuration ADC1 capture attenuation of channels.
+ *
+ * @param  channel the ADC1 channel
+ * @param  atten attenuation
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
  */
-esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev);
+esp_err_t adc_1_config_channel_atten(adc1_channel_t channel, adc_atten_t atten);
 
 /**
- * @brief SPI Device read transfer routine
- * @param rx_data: Data buffer to receive.
- * @param length: Transmission length in bytes
- * @param spi_device_handle_t: Return reference for created SPI device
+ * @brief Configuration ADC2 capture attenuation of channels.
+ *
+ * @param  channel the ADC2 channel
+ * @param  atten attenuation
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
  */
-esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev);
+esp_err_t adc_2_config_channel_atten(adc2_channel_t channel, adc_atten_t atten);
+
+/**
+ * @brief ADC1 get the value of the voltage.
+ *
+ * @param  channel the ADC1 channel
+ *
+ * @return
+ *     - -1 Parameter error
+ *     -  Other the value of ADC1 channel
+ */
+int adc_1_get_voltage(adc1_channel_t channel);
+
+/**
+ * @brief ADC2 get the value of the voltage.
+ *
+ * @param  channel the ADC2 channel
+ *
+ * @return
+ *     - -1 Parameter error
+ *     -  Other the value of ADC2 channel
+ */
+int adc_2_get_voltage(adc2_channel_t channel);
+
+/**
+ * @brief Hall  Sensor output value.
+ *        @note
+ *        The Hall Sensor uses Channel_0 and Channel_3 of ADC1.
+ *        So, firstly: please configure ADC1 module by calling adc1_config_width before calling hall_sensor_read.
+                 We recommend that the WIDTH ADC1 be configured as 12Bit, because the values of hall_sensor_read are small and almost the same if WIDTH ADC1 is configured as 9Bit, 10Bit or 11Bit.
+ *            secondly: when you use the hall sensor, please do not use Channel_0 and Channel_3 of ADC1 as
+ *                   ADC channels.
+ *
+ * @return the value of hall sensor
+ */
+//int hall_sensor_read();
+
+/**
+ *----------EXAMPLE TO USE ADC1------------ *
+ * @code{c}
+ *     adc1_config_width(ADC_WIDTH_12Bit);//config adc1 width
+ *     adc1_config_channel_atten(ADC1_CHANNEL_0,ADC_ATTEN_0db);//config channel0 attenuation
+ *     int val=adc1_get_voltage(ADC1_CHANNEL_0);//get the  val of channel0
+ * @endcode
+ **/
+
+/**
+ *----------EXAMPLE TO USE ADC2------------ *
+ * @code{c}
+ *     adc2_config_width(ADC_WIDTH_12Bit);//config adc1 width
+ *     adc2_config_channel_atten(ADC2_CHANNEL_0,ADC_ATTEN_0db);//config channel0 attenuation
+ *     int val=adc1_get_voltage(ADC2_CHANNEL_0);//get the  val of channel0
+ * @endcode
+ **/
+
+/**
+ *----------EXAMPLE TO USE HALL SENSOR------------ *
+ * @code{c}
+ *     adc1_config_width(ADC_WIDTH_12Bit);//config adc1 width
+ *     int val=hall_sensor_read();
+ * @endcode
+ **/
 
 #ifdef __cplusplus
-extern "C"
 }
 #endif
 
-#endif /* SPI_H_ */
+#endif  /*_DRIVER_ADC_FULL_H_*/

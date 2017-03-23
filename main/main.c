@@ -11,6 +11,8 @@
 #include "i2c/i2c.h"
 #include "spi/spi.h"
 #include "mpu9250_dmp/mpu_9250.h"
+#include "adc/adc.h"
+
 //#include "amis_30543/amis_30543.h"
 //#include "adns3080/adns3080.h"
 //#include "stepper/stepper.h"
@@ -39,7 +41,27 @@ extern void task_imu_reader_task(void *ignore);
 
 //adns_3080_device_t adns_test_2;
 
+void task_adc_test(void *ignore) {
+    ESP_LOGD(tag, ">> task_adc");
 
+    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
+    adc_2_config_channel_atten(ADC2_CHANNEL_5,ADC_ATTEN_11db);//config channel0 attenuation
+
+    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
+    adc_2_config_channel_atten(ADC2_CHANNEL_9,ADC_ATTEN_11db);//config channel0 attenuation
+
+
+    while(1) {
+
+        int val=adc_2_get_voltage(ADC2_CHANNEL_5);//get the  val of channel0
+        int val2=adc_2_get_voltage(ADC2_CHANNEL_9);//get the  val of channel0
+        ESP_LOGI(tag, "Value: %d and %d", val, val2);
+
+        vTaskDelay(1000/portTICK_PERIOD_MS);
+    } // End loop forever
+
+    vTaskDelete(NULL);
+}
 void task_servoSweep(void *ignore) {
     int bitSize         = 15;
     int minValue        = 500;  // micro seconds (uS)
@@ -244,7 +266,9 @@ void app_main(void)
 
    // xTaskCreatePinnedToCore(&task_stepper_control2, "imuReadTask2", 2048, NULL, 5, NULL, 0);
 
-    xTaskCreate(&task_servoSweep, "stepperTask", 2048, NULL, 5, NULL);
+    //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
+
+    xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 
