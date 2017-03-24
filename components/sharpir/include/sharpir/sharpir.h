@@ -45,7 +45,7 @@ typedef enum  {
  */
 typedef struct {
 	sharp_ir_model_t type; // Model Type
-	gpio_num_t sensor_pin;           // Sensor Input Pin
+	adc2_channel_t sensor_pin;           // Sensor Input Pin
     uint8_t num_samples; // How many samples to average
 } sharp_ir_device_t;
 
@@ -66,7 +66,7 @@ float sharp_ir_get_distance_cm(sharp_ir_device_t *device);
  * @brief Get current sensor distance reading
  * @param device: Target Sharp IR device
  */
-float sharp_ir_get_distance_raw(sharp_ir_device_t *device);
+int sharp_ir_get_distance_raw(sharp_ir_device_t *device);
 
 /**
  * @brief Get current sensor distance reading

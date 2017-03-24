@@ -26,25 +26,71 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <math.h>
 #include "esp_types.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
-#include "driver/adc.h"
+//#include "driver/adc.h"
+#include "adc/adc.h"
 #include "utils/utils.h"
 
 #include "sharpir.h"
 
-static const char *tag = "sharpir";
+static const char *tag = "sharp_ir";
 
 void sharp_ir_init(sharp_ir_device_t *device)
 {
-	//adc1_config_width(ADC_WIDTH_12Bit);
-	//adc1_config_channel_atten(ADC1_CHANNEL_0,ADC_ATTEN_0db);
+	adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
+	adc_2_config_channel_atten(device->sensor_pin, ADC_ATTEN_11db);//config channel attenuation
 }
 
 
+int sharp_ir_get_distance_raw(sharp_ir_device_t *device)
+{
+	int raw_val = 0;
+	for (int i = 0; i < device->num_samples; i++) {
+		raw_val += adc_2_get_voltage(device->sensor_pin); //get the  val of channel
+	}
+	return raw_val / device->num_samples;
+}
+
+float sharp_ir_get_distance_volt(sharp_ir_device_t *device)
+{
+	int raw_val = sharp_ir_get_distance_raw(device);
+	return 0.00084948603 * raw_val + 0.1019;
+}
+
+float sharp_ir_get_distance_cm(sharp_ir_device_t *device)
+{
+	//int raw_val = sharp_ir_get_distance_raw(device);
+	float volts = sharp_ir_get_distance_volt(device);
+	float distanceCM = 0;
+	if (device->type == CM_10_80) {
+
+		distanceCM = 27.728 * pow(volts, -1.2045);
+
+		//float distanceCM_median = 27.728 * pow(map(ir_val[NB_SAMPLE / 2], 0, 4095, 0, 5000) / 1000.0,
+		//				-1.2045);
+	}
+	return distanceCM;
+//	    } else if (device.type == CM_20_150){
+//
+//	        // Previous formula used by  Dr. Marcal Casas-Cartagena
+//	        // puntualDistance=61.573*pow(voltFromRaw/1000, -1.1068);
+//
+//	          distanceCM = 60.374 * pow(map(ir_val[NB_SAMPLE / 2], 0, 4095, 0, 5000)/1000.0, -1.16);
+//
+//
+//	    } else if (device.type == CM_4_30){
+//
+//	        // Different expressions required as the Photon has 12 bit ADCs vs 10 bit for Arduinos
+//
+//	          distanceCM = 12.08 * pow(map(ir_val[NB_SAMPLE / 2], 0, 4095, 0, 5000)/1000.0, -1.058);
+//
+//
+//	    }
+}
 

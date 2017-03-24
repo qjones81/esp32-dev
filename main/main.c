@@ -12,6 +12,7 @@
 #include "spi/spi.h"
 #include "mpu9250_dmp/mpu_9250.h"
 #include "adc/adc.h"
+#include "sharpir/sharpir.h"
 
 //#include "amis_30543/amis_30543.h"
 //#include "adns3080/adns3080.h"
@@ -44,21 +45,46 @@ extern void task_imu_reader_task(void *ignore);
 void task_adc_test(void *ignore) {
     ESP_LOGD(tag, ">> task_adc");
 
-    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
-    adc_2_config_channel_atten(ADC2_CHANNEL_5,ADC_ATTEN_11db);//config channel0 attenuation
+    sharp_ir_device_t left_sensor;
+    left_sensor.num_samples = 20;
+    left_sensor.sensor_pin = ADC2_CHANNEL_5;
+    left_sensor.type = CM_10_80;
 
-    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
-    adc_2_config_channel_atten(ADC2_CHANNEL_9,ADC_ATTEN_11db);//config channel0 attenuation
+    sharp_ir_init(&left_sensor);
+	while (1) {
 
+		float volts = sharp_ir_get_distance_volt(&left_sensor);
+		float cm =  sharp_ir_get_distance_cm(&left_sensor);
+		ESP_LOGI(tag, "Counts Value: %0.2f/%0.2f", volts, cm);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+	} // End loop forever
 
-    while(1) {
-
-        int val=adc_2_get_voltage(ADC2_CHANNEL_5);//get the  val of channel0
-        int val2=adc_2_get_voltage(ADC2_CHANNEL_9);//get the  val of channel0
-        ESP_LOGI(tag, "Value: %d and %d", val, val2);
-
-        vTaskDelay(1000/portTICK_PERIOD_MS);
-    } // End loop forever
+//    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
+//    adc_2_config_channel_atten(ADC2_CHANNEL_5,ADC_ATTEN_11db);//config channel0 attenuation
+//
+//    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
+//    adc_2_config_channel_atten(ADC2_CHANNEL_9,ADC_ATTEN_11db);//config channel0 attenuation
+//
+//
+//    while(1) {
+//
+//    	int val = 0;
+//    	int val2 = 0;
+//    	for(int i = 0; i < 20; i++)
+//    	{
+//    		val+=adc_2_get_voltage(ADC2_CHANNEL_5);//get the  val of channel0
+//    		//val2+=adc_2_get_voltage(ADC2_CHANNEL_9);//get the  val of channel0
+//    	}
+//        float val_avg = val / 20.0f;
+//        //float val2_avg = val2 / 20.0f;
+//        float voltage_1_1 = 0.00084948603 * val_avg + 0.1019;//0.1613;
+//        float voltage_1 = -0.000000047251 * (val_avg * val_avg) + (0.00097725 * val_avg) + 0.0541;
+//       // float voltage_2 = 3.3f * val2_avg / 4096.0f;
+//       // ESP_LOGI(tag, "%f", -0.000047251);
+//        ESP_LOGI(tag, "Counts Value: %d / Voltage %0.2f / %0.2f", (int)val_avg, voltage_1, voltage_1_1);
+//       // ESP_LOGI(tag, "Voltage: %0.2f and %0.2f", voltage_1, voltage_2);
+//        vTaskDelay(1000/portTICK_PERIOD_MS);
+//    } // End loop forever
 
     vTaskDelete(NULL);
 }
