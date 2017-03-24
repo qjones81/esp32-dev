@@ -63,6 +63,12 @@ void sharp_ir_init(sharp_ir_device_t *device);
 float sharp_ir_get_distance_cm(sharp_ir_device_t *device);
 
 /**
+ * @brief Get current sensor distance reading tolerance
+ * @param device: Target Sharp IR device
+ */
+float sharp_ir_get_distance_cm_tol(sharp_ir_device_t *device);
+
+/**
  * @brief Get current sensor distance reading
  * @param device: Target Sharp IR device
  */

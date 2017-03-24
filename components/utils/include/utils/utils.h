@@ -19,6 +19,8 @@
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
 
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
+
 extern uint32_t IRAM_ATTR micros();
 extern uint32_t IRAM_ATTR millis();
 

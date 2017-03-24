@@ -268,9 +268,9 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
     }
     // 1 = clockwise, 0 = counter clockwise
     if(steps_sec <= 0)
-        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, 1);
+        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, motor_devices[motor_t]->cfg.dir_reverse ? 0 : 1);
     else
-        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, 0);
+        gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, motor_devices[motor_t]->cfg.dir_reverse ? 1 : 0);
 }
 //
 //TickType_t get_stepper_control_ticks_per_second()

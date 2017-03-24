@@ -46,16 +46,36 @@ void task_adc_test(void *ignore) {
     ESP_LOGD(tag, ">> task_adc");
 
     sharp_ir_device_t left_sensor;
-    left_sensor.num_samples = 20;
-    left_sensor.sensor_pin = ADC2_CHANNEL_5;
+    left_sensor.num_samples = 100;
+    left_sensor.sensor_pin = ADC2_CHANNEL_9;
     left_sensor.type = CM_10_80;
 
+    sharp_ir_device_t right_sensor;
+    right_sensor.num_samples = 100;
+    right_sensor.sensor_pin = ADC2_CHANNEL_5;
+    right_sensor.type = CM_10_80;
+
     sharp_ir_init(&left_sensor);
+    sharp_ir_init(&right_sensor);
 	while (1) {
 
-		float volts = sharp_ir_get_distance_volt(&left_sensor);
-		float cm =  sharp_ir_get_distance_cm(&left_sensor);
-		ESP_LOGI(tag, "Counts Value: %0.2f/%0.2f", volts, cm);
+		float volts_l = sharp_ir_get_distance_volt(&left_sensor);
+		float cm_l =  sharp_ir_get_distance_cm(&left_sensor);
+
+		float volts_r = sharp_ir_get_distance_volt(&right_sensor);
+		float cm_r =  sharp_ir_get_distance_cm(&right_sensor);
+
+		if(cm_l >= 70 || cm_l <= 10.0f) {
+			ESP_LOGI(tag, "NO MEASUREMENT LEFT: %f", volts_l);
+		} else {
+			ESP_LOGI(tag, "Left Value: %0.2f/%0.2f", volts_l, cm_l);
+		}
+
+		if (cm_r >= 70 || cm_r <= 10.0f) {
+			ESP_LOGI(tag, "NO MEASUREMENT RIGHT: %f", volts_r);
+		} else {
+			ESP_LOGI(tag, "Right Value: %0.2f/%0.2f", volts_r, cm_r);
+		}
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	} // End loop forever
 
@@ -187,9 +207,9 @@ void app_main(void)
     // POLL For Connection
     delay_ms(5000);*/
 
-    //qrobot_init();
+    qrobot_init();
 
-    //qrobot_start();
+    qrobot_start();
 
 /*
     // Pin 5, 1Mhz, Mode 0

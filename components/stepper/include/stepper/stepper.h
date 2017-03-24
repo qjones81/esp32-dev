@@ -57,6 +57,7 @@ typedef struct {
     uint8_t step_pin;           // Step Pin
     uint8_t dir_pin;            // Dir Pin
     uint8_t step_hold_delay;    // Delay to hold step pin high after step (in microseconds)
+    bool dir_reverse;
 } stepper_motor_device_config_t;
 
 /**

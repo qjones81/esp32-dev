@@ -237,7 +237,7 @@ void ar6115e_input_handler(pulse_event_t event)
             current_speed_target = map(event.pulse_width, 1100, 1900, -100, 100);
             break;
         case AILERON:
-            steering_input = map(event.pulse_width, 1900, 1100, -100, 100);
+            steering_input = map(event.pulse_width, 1900, 1100, -5000, 5000);
             break;
         default:
             break;
@@ -245,8 +245,8 @@ void ar6115e_input_handler(pulse_event_t event)
     }
 
    // ESP_LOGI(tag, "Steering: %d | Throttle: %d", (int)steering_input, (int)current_speed_target);
-    stepper_control_set_speed(STEPPER_MOTOR_1, min(10000, 10000 * (current_speed_target / 100.0)));
-    stepper_control_set_speed(STEPPER_MOTOR_2, min(10000, 10000 * (current_speed_target / 100.0)));
+    stepper_control_set_speed(STEPPER_MOTOR_1, min(10000, 10000 * (current_speed_target / 100.0) - steering_input));
+    stepper_control_set_speed(STEPPER_MOTOR_2, min(10000, 10000 * (current_speed_target / 100.0) + steering_input));
 
 }
 
@@ -344,11 +344,12 @@ void qrobot_init_amis30543_drivers()
 
 void qrobot_init_stepper_motors()
 {
+	// Motor 1 = Right, Motor 2 = Left
     stepper_motor_device_config_t motor_1_cfg = { .step_pin = GPIO_NUM_17,
-            .dir_pin = GPIO_NUM_16, .step_hold_delay = 10 };
+            .dir_pin = GPIO_NUM_16, .step_hold_delay = 10, .dir_reverse = true };
 
     stepper_motor_device_config_t motor_2_cfg = { .step_pin = GPIO_NUM_15,
-            .dir_pin = GPIO_NUM_2, .step_hold_delay = 10 };
+            .dir_pin = GPIO_NUM_2, .step_hold_delay = 10, .dir_reverse = false };
 
     stepper_control_add_device(STEPPER_MOTOR_1, motor_1_cfg);
     stepper_control_add_device(STEPPER_MOTOR_2, motor_2_cfg);

@@ -41,6 +41,7 @@
 
 static const char *tag = "sharp_ir";
 
+static float _previous_distance = 0.0;
 void sharp_ir_init(sharp_ir_device_t *device)
 {
 	adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
@@ -94,3 +95,30 @@ float sharp_ir_get_distance_cm(sharp_ir_device_t *device)
 //	    }
 }
 
+float sharp_ir_get_distance_cm_tol(sharp_ir_device_t *device)
+{
+	float _p = 0;
+	float _sum = 0;
+
+	float _tol = .93f;
+	for (int i = 0; i<5; i++) {
+
+		int foo = sharp_ir_get_distance_cm(device);
+
+		if (foo >= (_tol*_previous_distance)) {
+
+			_previous_distance = foo;
+			_sum = _sum + foo;
+			_p++;
+
+		}
+
+
+	}
+
+
+	float accurateDistance = _sum / _p;
+
+	return accurateDistance;
+
+}
