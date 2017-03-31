@@ -53,28 +53,61 @@ stepper_motor_device_t *motor_devices[MAX_MOTORS] = { NULL };
 
 uint8_t num_devices = 0;
 static const char *tag = "stepper";
+
+static QueueHandle_t step_1_queue;
+static QueueHandle_t step_2_queue;
+
 void stepper_control_timer_init_0();
 void stepper_control_timer_init_1();
 
-void task_stepper_control(void *ignore)
+void task_stepper_control_1(void *ignore)
 {
     // Init Timers
     if (motor_devices[STEPPER_MOTOR_1] != NULL) stepper_control_timer_init_0();
+    //if (motor_devices[STEPPER_MOTOR_2] != NULL) stepper_control_timer_init_1();
+
+    uint8_t recv;
+    while(1) {
+    	xQueueReceive(step_1_queue, &recv, portMAX_DELAY);
+    	if(motor_devices[STEPPER_MOTOR_1]->steps_second < 0) {
+    		motor_devices[STEPPER_MOTOR_1]->step_count--;
+    	}
+    	else {
+    		motor_devices[STEPPER_MOTOR_1]->step_count++;
+    	}
+    }
+    vTaskDelete(NULL);
+}
+
+void task_stepper_control_2(void *ignore)
+{
+    // Init Timers
+    //if (motor_devices[STEPPER_MOTOR_1] != NULL) stepper_control_timer_init_0();
     if (motor_devices[STEPPER_MOTOR_2] != NULL) stepper_control_timer_init_1();
 
-    //stepper_control_start();
-    while(1) {
-        delay_ms(1000);
-    }
+	uint8_t recv;
+	while (1) {
+		xQueueReceive(step_2_queue, &recv, portMAX_DELAY);
+		if (motor_devices[STEPPER_MOTOR_2]->steps_second < 0) {
+			motor_devices[STEPPER_MOTOR_2]->step_count--;
+		} else {
+			motor_devices[STEPPER_MOTOR_2]->step_count++;
+		}
+	}
     vTaskDelete(NULL);
 }
 
 void stepper_control_start()
 {
     // Start Control Task
-    xTaskCreatePinnedToCore(&task_stepper_control, "stepper_control", 2048, NULL, 7, NULL, 1);
-    //xTaskCreate(&task_stepper_control, "stepper_control", 2048, NULL, 7, NULL);
+    xTaskCreatePinnedToCore(&task_stepper_control_1, "stepper_control_1", 2048, NULL, 7, NULL, 1);
+    xTaskCreatePinnedToCore(&task_stepper_control_2, "stepper_control_2", 2048, NULL, 7, NULL, 1);
 
+    // Create queue for receiving
+
+    step_1_queue = xQueueCreate(10, sizeof(uint8_t));
+    // Create queue for receiving
+    step_2_queue = xQueueCreate(10, sizeof(uint8_t));
     // Create Semaphore
    // vSemaphoreCreateBinary(timer_tick);
     //timer_queue = xQueueCreate(10, sizeof(timer_event_t));
@@ -102,9 +135,11 @@ void IRAM_ATTR control_isr(void *para)
 
     if(timer_idx == 0) {
         TIMERG0.int_clr_timers.t0 = 1;
+        xQueueSendToBackFromISR(step_1_queue, &timer_idx, NULL);
     }
     else {
         TIMERG0.int_clr_timers.t1 = 1;
+        xQueueSendToBackFromISR(step_2_queue,  &timer_idx, NULL);
     }
 //    uint32_t intr_status = TIMERG0.int_st_timers.val;
 //    if(state == 0) {
@@ -117,49 +152,10 @@ void IRAM_ATTR control_isr(void *para)
 //    }
     //ESP_LOGI(tag, "Int: %d", timer_idx);
 
-   gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 1);
-    delay_us(10);
-    gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 0);
+	gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 1);
+	delay_us(10);
+	gpio_set_level(motor_devices[timer_idx]->cfg.step_pin, 0);
 
-/*
-    for(int i = 0; i < num_devices; i++)
-    {
-        motor_devices[i]->ticks++; // Update Ticks
-      // ESP_LOGI(tag, "TICKS: %d / %d!\n",motor_devices[i]->ticks,motor_devices[i]->tick_target);
-        switch(motor_devices[i]->state) {
-            case OFF:
-                if(motor_devices[i]->ticks >= 10) { //motor_devices[i]->tick_target) {
-                    motor_devices[i]->ticks = 0;
-                    motor_devices[i]->state = STEP_START;
-                } // GOTO next state
-                else { // STAY current state
-                    break;
-                }
-            case STEP_START:
-                gpio_set_level(motor_devices[i]->cfg.step_pin, 1);
-
-                if(motor_devices[i]->ticks >= 1) { //motor_devices[i]->cfg.step_hold_delay) {
-                    motor_devices[i]->ticks = 2;
-                    motor_devices[i]->state = STEP_END;
-                }
-
-                break;
-            case STEP_END:
-                gpio_set_level(motor_devices[i]->cfg.step_pin, 0);
-                // Update State
-                if(motor_devices[i]->dir == 0) {
-                    motor_devices[i]->current_step++;
-                } else {
-                    motor_devices[i]->current_step--;
-                }
-
-                motor_devices[i]->state = OFF;
-                break;
-            default:
-                // Invalid state
-                ESP_LOGE(tag, "INVALID STEPPER STATE!\n");
-        }
-    }*/
 
 }
 
@@ -256,28 +252,29 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
     //Set alarm value
     if(motor_t == STEPPER_MOTOR_1) {
 
-        if(steps_sec == 0)
-        {
+        if(steps_sec == 0) {
             timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / 0.0001) * TIMER_SCALE_SEC);
         }
         else {
-
             timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
         }
     }
     else {
-        if(steps_sec == 0)
-                {
-                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.0001) * TIMER_SCALE_SEC);
-                }
-                else
-                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
-    }
+		if (steps_sec == 0) {
+			timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.0001) * TIMER_SCALE_SEC);
+		} else
+			timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
+	}
     // 1 = clockwise, 0 = counter clockwise
     if(steps_sec <= 0)
         gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, motor_devices[motor_t]->cfg.dir_reverse ? 0 : 1);
     else
         gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, motor_devices[motor_t]->cfg.dir_reverse ? 1 : 0);
+}
+
+int32_t stepper_control_get_position(stepper_motor_type_t motor_t)
+{
+	return motor_devices[motor_t]->step_count;
 }
 //
 //TickType_t get_stepper_control_ticks_per_second()

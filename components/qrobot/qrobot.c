@@ -454,10 +454,31 @@ void qrobot_controller_task(void *ignore)
 	}
     vTaskDelete(NULL);
 }
-void qrobot_rc_control_service(void *ignore)
+
+void qrobot_odometry_task(void *ignore)
 {
-    ESP_LOGD(tag, ">> qrobot_rc_control_service");
+
+    ESP_LOGD(tag, ">> qrobot_odometry_task");
+    int32_t wheel_1_step_prev = 0;
+    int32_t wheel_2_step_prev = 0;
+    int32_t wheel_1_step = 0;
+    int32_t wheel_2_step = 0;
+    uint32_t last_update = millis();
     while (1) {
+
+
+    	wheel_1_step_prev = wheel_1_step;
+    	wheel_2_step_prev = wheel_2_step;
+    	wheel_1_step = stepper_control_get_position(STEPPER_MOTOR_1);
+    	wheel_2_step = stepper_control_get_position(STEPPER_MOTOR_2);
+
+
+    	//uint32_t now = millis();
+    	//float velocity = (wheel_1_step - wheel_1_step_prev) / (now - last_update);
+
+    	//last_update = millis();
+    	//ESP_LOGI(tag, "Time: %d", loop_time);
+    	vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }

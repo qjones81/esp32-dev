@@ -68,6 +68,7 @@ typedef struct {
     bool stopped;                           // stop/enable flag
     bool dir;                               // step direction
     int32_t current_step;                   // Current Stepper Position
+    int32_t step_count;
     TickType_t ticks;                         // Current Ticks
     TickType_t tick_target;                   // Tick Target
     uint32_t steps_second;                  // Target speed in steps per second
@@ -101,6 +102,13 @@ void stepper_control_stop();
  * @param steps_sec: Configuration data for stepper motor
  */
 void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec);
+
+/**
+ * @brief Get stepper motor device position from controller
+ * @param motor_t: ID for stepper motor to controller.  Valid values (MOTOR_1, MOTOR_2)
+ * @return: Current motor positionr
+ */
+int32_t stepper_control_get_position(stepper_motor_type_t motor_t);
 
 //void stepper_control_step(int num_steps);
 //void stepper_control_timer_init();
