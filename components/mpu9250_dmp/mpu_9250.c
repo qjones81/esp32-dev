@@ -43,10 +43,6 @@ float _gSense = 0.0f;   // Updated after gyro FSR is set
 
 float PI = 3.14159265358979323846f;
 
-
-#define RAD2GRAD 57.2957795
-#define GRAD2RAD 0.01745329251994329576923690768489
-
 // Socket for Debug
 static socket_device_t *sock = NULL;
 
@@ -67,9 +63,9 @@ float mpu_9250_calc_quat(long axis)
 
 
 // Read Task
-void task_imu_reader_task(void *ignore)
+void mpu_imu_reader_task(void *ignore)
 {
-	ESP_LOGD(tag, ">>task_imu_reader_task");
+	ESP_LOGD(tag, ">>mpu_imu_reader_task started.");
 	while (1) {
 
 		// If intPin goes high, all data registers have new data
@@ -156,7 +152,7 @@ inv_error_t mpu_9250_begin(void)
     }
 
 	// SUCCESS:  Now start required task/services
-	xTaskCreate(&task_imu_reader_task, "mpu9250_task", 2048, NULL, 3, NULL);
+	xTaskCreate(&mpu_imu_reader_task, "mpu9250_task", 2048, NULL, 3, NULL);
 
 	#if defined(CONFIG_MPU9250_USE_DEBUG_SERVICE)
 	        sock = (socket_device_t *) malloc(sizeof(socket_device_t));

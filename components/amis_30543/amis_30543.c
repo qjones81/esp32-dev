@@ -47,7 +47,7 @@ uint8_t read_reg(uint8_t address, spi_device_handle_t device)
     tx_data[1] = 0x00;
     spi_transfer(tx_data, rx_data, 2, device);
 
-    ESP_LOGI(tag, "Read back: %d", rx_data[1]);
+   // ESP_LOGI(tag, "Read back: %d", rx_data[1]);
 
     return rx_data[1];
 }

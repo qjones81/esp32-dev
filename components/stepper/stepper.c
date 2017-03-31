@@ -188,7 +188,7 @@ void stepper_control_timer_init_0()
     //Start timer counter
     timer_start(TIMER_GROUP_0, TIMER_0);
 
-    ESP_LOGI(tag, "Init 0.");
+    //ESP_LOGI(tag, "Init 0.");
 }
 
 void stepper_control_timer_init_1()
@@ -216,7 +216,7 @@ void stepper_control_timer_init_1()
     //Start timer counter
     timer_start(TIMER_GROUP_0, TIMER_1);
 
-    ESP_LOGI(tag, "Init 1.");
+    //ESP_LOGI(tag, "Init 1.");
 
 }
 
@@ -244,7 +244,7 @@ esp_err_t stepper_control_add_device(stepper_motor_type_t motor_t, stepper_motor
 
     motor_devices[motor_t] = dev;
 
-    ESP_LOGI(tag, "Successfully added stepper on step %d and dir %d.\n", dev_config.step_pin, dev_config.dir_pin);
+    ESP_LOGI(tag, "Successfully added stepper on step GPIO: %d and GPIO: dir %d.\n", dev_config.step_pin, dev_config.dir_pin);
     // return error/success code
     return ESP_OK;
 }

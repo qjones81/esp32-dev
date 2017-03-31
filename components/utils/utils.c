@@ -64,3 +64,7 @@ extern float map_f(float x, float in_min, float in_max, float out_min, float out
 {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
+extern bool equal_f(float a, float b, float epsilon)
+{
+  return fabs(a - b) < epsilon;
+}

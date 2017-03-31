@@ -78,9 +78,9 @@ static void isr_handler(void *arg) {
     }
 }
 
-void task_ar6115e_read(void *ignore)
+void ar6115e_reader_task(void *ignore)
 {
-    ESP_LOGD(tag, ">> task_ar6115e_read");
+    ESP_LOGD(tag, ">> ar6115e_reader_task");
     while (1) {
         pulse_event_t pulse_event;
         // ESP_LOGD(tag, "Waiting on interrupt queue");
@@ -136,7 +136,7 @@ void ar6115e_init(rc_event_cb_t handler)
 }
 void ar6115e_start()
 {
-    xTaskCreate(&task_ar6115e_read, "ar6115_task", 2048, NULL, 3, NULL);
+    xTaskCreate(&ar6115e_reader_task, "ar6115_reader_task", 2048, NULL, 3, NULL);
 
 #if defined(CONFIG_AR6115_USE_DEBUG_SERVICE)
         sock = (socket_device_t *) malloc(sizeof(socket_device_t));

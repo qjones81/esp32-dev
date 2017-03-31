@@ -183,13 +183,6 @@ void app_main(void)
 
     //   amis_30543_device_t amis_test;
 
-
-
-    // Init SPI Bus
-    ESP_LOGI(tag, "Initializing SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
-    ESP_LOGI(tag, "SPI Bus Initialized.\n");
-
     /*
     // Wifi Config
     wifi_config_t sta_config;
