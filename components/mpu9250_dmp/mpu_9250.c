@@ -29,25 +29,23 @@ int ax, ay, az;
 int gx, gy, gz;
 int mx, my, mz;
 long qw, qx, qy, qz;
-float temperature;
+
+volatile float temperature;
 uint32_t _time;
-float pitch, roll, yaw;
-float heading;
+
+volatile float pitch, roll, yaw;
+volatile float heading;
+volatile float phi;
 
 float _mSense = 6.665f; // Constant - 4915 / 32760
 float _aSense = 0.0f;   // Updated after accel FSR is set
 float _gSense = 0.0f;   // Updated after gyro FSR is set
 
 float PI = 3.14159265358979323846f;
-// Debug
-int delt_t = 0; // used to control display output rate
-int count = 0;  // used to control display output rate
 
-float sum = 0;
-uint32_t sumCount = 0;
 
-float deltat = 0.0f;                             // integration interval for both filter schemes
-uint32_t lastUpdate = 0, firstUpdate = 0, Now = 0;    // used to calculate integration interval
+#define RAD2GRAD 57.2957795
+#define GRAD2RAD 0.01745329251994329576923690768489
 
 // Socket for Debug
 static socket_device_t *sock = NULL;
@@ -72,84 +70,33 @@ float mpu_9250_calc_quat(long axis)
 void task_imu_reader_task(void *ignore)
 {
 	ESP_LOGD(tag, ">>task_imu_reader_task");
-	while(1) {
+	while (1) {
 
 		// If intPin goes high, all data registers have new data
-		if ( mpu_9250_fifo_available() ) {
+		if (mpu_9250_fifo_available()) {
 			// Use dmpUpdateFifo to update the ax, gx, mx, etc. values
-			if ( mpu_9250_dmp_update_fifo() == INV_SUCCESS) {
-
-				// mpu_9250_compute_euler_angles can be used -- after updating the
-				// quaternion values -- to estimate roll, pitch, and yaw
+			if (mpu_9250_dmp_update_fifo() == INV_SUCCESS) {
 				mpu_9250_compute_euler_angles(1); // degrees
-				// After calling mpu_9250_dmp_update_fifo() the ax, gx, mx, etc. values
-							  // are all updated.
-							  // Quaternion values are, by default, stored in Q30 long
-							  // format. calcQuat turns them into a float between -1 and 1
-
-				//printIMUData();
-				sumCount++;
 			}
+			//mpu_reset_fifo(); // always reset fifo
 		}
 
 		// Check non-dmp data
-		if(mpu_9250_data_available())
-		{
-		    // Update Compass
-            mpu_9250_update_compass();
-            mpu_9250_update_accel();
-            mpu_9250_update_gyro();
+		if (mpu_9250_data_available()) {
+			// Update Compass
+			mpu_9250_update_compass();
+			//mpu_9250_update_accel();
+			//mpu_9250_update_gyro();
 
-            // Update Temperature
-            int16_t tempCount = mpu_9250_read_temp_data();  // Read the adc values
-            temperature = (tempCount / 340.0f) + 21.0f; // Temperature in degrees Centigrade
+			// Update Temperature
+			//int16_t tempCount = mpu_9250_read_temp_data(); // Read the adc values
+			//temperature = (tempCount / 340.0f) + 21.0f; // Temperature in degrees Centigrade
 
-            // Compute Heading
-            heading = mpu_9250_compute_heading();
+			// Compute Heading
+			mpu_9250_compute_heading();
 		}
-
-		Now = micros();
-		deltat = (float)((Now - lastUpdate)/1000000.0f) ; // set integration time by time elapsed since last filter update
-		lastUpdate = Now;
-
-		sum += deltat;
-
-		delt_t = millis() - count;
-		if (delt_t > 500) { // update LCD once per half-second independent of read rate
-
-			//ESP_LOGI(tag, "average rate = %f\n\r", (float) sumCount/sum);
-
-			float q0 = mpu_9250_calc_quat(qw);
-			float q1 = mpu_9250_calc_quat(qx);
-			float q2 = mpu_9250_calc_quat(qy);
-			float q3 = mpu_9250_calc_quat(qz);
-
-
-//			ESP_LOGI(tag, "ax = %f", (float)ax/1000.0f);
-//			ESP_LOGI(tag, " ay = %f", (float)ay/1000.0f);
-//			ESP_LOGI(tag, " az = %f mg\n\r", (float)az/1000.0f);
-//
-//			ESP_LOGI(tag, "gx = %d", gx);
-//			ESP_LOGI(tag, " gy = %d", gy);
-//			ESP_LOGI(tag, " gz = %d  deg/s\n\r", gz);
-//
-//			ESP_LOGI(tag, "mx = %d", mx);
-//			ESP_LOGI(tag, " my = %d", my);
-//			ESP_LOGI(tag, " mz = %d  mG\n\r", mz);
-
-			//ESP_LOGI(tag, "Q: %f %f %f %f\n", q0, q1, q2, q3);
-			//ESP_LOGI(tag, "R/P/Y: %f %f %f\n", roll, pitch, yaw);
-			//ESP_LOGI(tag, "Temp: %f\n", temperature);
-			//ESP_LOGI(tag, "Heading: %f\n", heading);
-			//ESP_LOGI(tag, "Time: %d\n", _time);
-
-			count = millis();
-			sum = 0;
-			sumCount = 0;
-		}
-
+		vTaskDelay(2 / portTICK_PERIOD_MS);
 	}
-
 	vTaskDelete(NULL);
 }
 
@@ -170,7 +117,6 @@ void task_mpu9250_socket_debug(void *ignore)
     vTaskDelete(NULL);
 }
 #endif
-
 
 inv_error_t mpu_9250_begin(void)
 {
@@ -221,6 +167,7 @@ inv_error_t mpu_9250_begin(void)
 	        xTaskCreate(&task_mpu9250_socket_debug, "mpu9250_socket_task", 2048, NULL, 3, NULL);
 	#endif
 
+	        mpu_reset_fifo();
 	return result;
 }
 
@@ -369,6 +316,8 @@ void mpu_9250_compute_euler_angles(bool degrees)
     float dqy = qToFloat(qy, 30);
     float dqz = qToFloat(qz, 30);
 
+    //ESP_LOGI(tag, "Quat: %0.2f, %0.2f, %0.2f, %0.2f", dqw, dqx, dqy, dqz);
+
     float ysqr = dqy * dqy;
     float t0 = -2.0f * (ysqr + dqz * dqz) + 1.0f;
     float t1 = +2.0f * (dqx * dqy - dqw * dqz);
@@ -384,15 +333,20 @@ void mpu_9250_compute_euler_angles(bool degrees)
     roll = atan2(t3, t4);
     yaw = atan2(t1, t0);
 
+    phi = (atan2(2 * (dqy * dqz + dqw * dqx), dqw * dqw - dqx * dqx - dqy * dqy + dqz * dqz));
+
 	if (degrees)
 	{
 		pitch *= (180.0 / PI);
 		roll *= (180.0 / PI);
 		yaw *= (180.0 / PI);
+		phi *= (180.0 / PI);
 		if (pitch < 0) pitch = 360.0 + pitch;
 		if (roll < 0) roll = 360.0 + roll;
-		if (yaw < 0) yaw = 360.0 + yaw;
+		if (yaw < 0)
+			yaw = 360.0 + yaw;
 	}
+
 }
 int mpu_9250_update_accel(void)
 {
@@ -436,7 +390,7 @@ int mpu_9250_update_compass()
 }
 
 
-float mpu_9250_compute_heading(void)
+void mpu_9250_compute_heading(void)
 {
     if (my == 0)
         heading = (mx < 0) ? 180.0 : 0;
@@ -449,7 +403,6 @@ float mpu_9250_compute_heading(void)
 
     heading*= 180.0 / PI;
 
-    return heading;
 }
 
 bool mpu_9250_data_available()
@@ -459,4 +412,29 @@ bool mpu_9250_data_available()
         return (intStatusReg & (1<<INT_STATUS_RAW_DATA_RDY_INT));
     }
     return 0;
+}
+
+float mpu_9250_get_pitch()
+{
+	return pitch;
+}
+float mpu_9250_get_roll()
+{
+	return roll;
+}
+float mpu_9250_get_yaw()
+{
+	return yaw;
+}
+float mpu_9250_get_heading()
+{
+	return heading;
+}
+
+// Quick calculation to obtein Phi angle from quaternion solution (from DMP internal quaternion solution)
+float mpu_9250_get_phi() {
+
+  //return( asin(-2*(q.x * q.z - q.w * q.y)) * 180/M_PI); //roll
+  //return Phi angle (robot orientation) from quaternion DMP output
+  return phi;
 }

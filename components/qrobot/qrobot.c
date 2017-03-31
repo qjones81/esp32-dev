@@ -50,6 +50,17 @@
 
 static const char *tag = "qrobot";
 
+#define KP_BALANCE 0.19f
+#define KD_BALANCE 28.0f
+
+#define KP_RAISEUP 0.16f
+#define KD_RAISEUP 44.0f
+
+#define KP_SPEED 0.08f
+#define KI_SPEED 0.1f
+
+#define MAX_ACCEL 7
+
 // save/load to flash
 float Kp_position = 1.0f;
 float Ki_position = 0.0f;
@@ -59,13 +70,13 @@ float Kp_heading = 1.0f;
 float Ki_heading = 0.0f;
 float Kd_heading = 0.0f;
 
-float Kp_speed = 1.0f;
-float Ki_speed = 0.0f;
+float Kp_speed = KP_SPEED;
+float Ki_speed = KI_SPEED;
 float Kd_speed = 0.0f;
 
-float Kp_balance = 1.0f;
+float Kp_balance = KP_BALANCE;
 float Ki_balance = 0.0f;
-float Kd_balance = 0.0f;
+float Kd_balance = KD_BALANCE;
 
 float Kp_line_following = 1.0f;
 float Ki_line_following = 0.0f;
@@ -93,11 +104,21 @@ float prev_pos_y = 0.0f;
 float current_pos_error = 0.0f;
 float prev_pos_error = 0.0f;
 
+float target_tilt = 0.0f;
 float current_tilt = 0.0f;
 float prev_tilt = 0.0f;
 float current_tilt_target = 0.0f;
 float current_tilt_error = 0.0f;
 float prev_tilt_error = 0.0f;
+float max_target_tilt = 40.0f;
+
+float max_control_output = 400;
+
+int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
+int ITERM_MAX = 8000;       // 5000
+
+float speed_m1 = 0.0f;
+float speed_m2 = 0.0f;
 
 //save to flash
 float max_linear_speed = 1.0f;
@@ -109,11 +130,14 @@ float max_angular_accel = 0.1f;
 float wheel_radius_left = 4.0f;
 float wheel_radius_right = 4.0f;
 float wheel_base = 5.0f;
+
+float control_output = 0.0f;
 //end save
 
-
+float pid_error_sum = 0.0f;
 float steering_input = 0.0f;
 
+bool robot_shutdown = true;
 // Socket for Debug
 //socket_device_t *sock = NULL;
 
@@ -220,6 +244,171 @@ void qrobot_control_debug_service(void *ignore)
 }
 #endif
 
+
+
+float qrobot_stability_PID_control(float dt, float input, float setpoint)
+{
+	static float setpoint_old = 0.0f;
+	static float prev_error = 0.0f;
+	static float prev_error_old = 0.0f;
+
+	float error;
+	float output;
+
+	error = setpoint - input;
+
+
+	// Kd is implemented in two parts
+	//    The biggest one using only the input (sensor) part not the SetPoint input-input(t-2)
+	//    And the second using the setpoint to make it a bit more agressive   setPoint-setPoint(t-1)
+	output = Kp_balance * error + (Kd_balance * (setpoint - setpoint_old) - Kd_balance * (input - prev_error_old)) / dt;
+
+	//ESP_LOGI(tag, "DT: %f", (Kd_balance * (input - prev_error_old)) / dt);
+	prev_error_old = prev_error;
+	prev_error = input;  // error for Kd is only the input component
+	setpoint_old = setpoint;
+	return (output);
+}
+
+// PI controller implementation (Proportional, integral). DT is in milliseconds
+float qrobot_speed_PID_control(float dt, float input, float setPoint)
+{
+  float error;
+  float output;
+
+  error = setPoint - input;
+  pid_error_sum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
+  pid_error_sum = constrain(pid_error_sum, -ITERM_MAX, ITERM_MAX);
+
+  //Serial.println(PID_errorSum);
+
+  output = Kp_speed * error + Ki_speed * pid_error_sum * dt * 0.001; // DT is in miliseconds...
+  return (output);
+}
+
+
+void qrobot_controller_task(void *ignore)
+{
+    ESP_LOGD(tag, ">> qrobot_controller_task");
+	uint32_t last_update = millis();
+	vTaskDelay(5 / portTICK_PERIOD_MS);
+	uint32_t now = 0;
+	float motor_1_speed = 0;
+	float motor_2_speed = 0;
+	float dt;
+
+	float robot_speed = 0.0f;
+	float robot_speed_old = 0.0f;
+	float estimated_speed_filtered = 0.0f;
+	while (1) {
+		if(robot_shutdown)
+		{
+			vTaskDelay(100 / portTICK_PERIOD_MS);
+			continue;
+		}
+		now = millis();
+		dt = (now - last_update);
+
+		prev_tilt = current_tilt;
+		current_tilt = mpu_9250_get_phi() * 1.1111111; //Degrees to GRAD
+
+		//ESP_LOGI(tag, "Phi: %0.2f", current_tilt);
+		//ESP_LOGI(tag, "Roll: %0.2f, Pitch: %0.2f, Yaw: %0.2f, Phi: %0.02f", mpu_9250_get_roll(), mpu_9250_get_pitch(), mpu_9250_get_yaw(), mpu_9250_get_phi());
+
+		// We calculate the estimated robot speed:
+		// Estimated_Speed = angular_velocity_of_stepper_motors(combined) - angular_velocity_of_robot(angle measured by IMU)
+		robot_speed_old = robot_speed;
+		robot_speed = (motor_1_speed + motor_2_speed) / 2; // Positive: forward
+
+		float angular_velocity = (current_tilt - prev_tilt) * 90.0; // 90 is an empirical extracted factor to adjust for real units
+		float estimated_speed = -robot_speed_old - angular_velocity; // We use robot_speed(t-1) or (t-2) to compensate the delay
+		estimated_speed_filtered = estimated_speed_filtered * 0.95
+				+ estimated_speed * 0.05; // low pass filter on estimated speed
+
+				// SPEED CONTROL: This is a PI controller.
+				//    input:user throttle, variable: estimated robot speed, output: target robot angle to get the desired speed
+		float throttle = (current_speed_target) * 500;
+		float steering = (steering_input) * 200;
+		target_tilt = qrobot_speed_PID_control(dt, estimated_speed_filtered, -throttle);
+		target_tilt = constrain(target_tilt, -max_target_tilt, max_target_tilt); // limited output
+
+		//ESP_LOGI(tag, "Throttle: %0.2f", throttle);
+
+		//ESP_LOGI(tag, "Speed: %0.2f, %0.2f, %0.2f, %0.2f", target_tilt, robot_speed, estimated_speed_filtered, angular_velocity);
+
+		control_output += qrobot_stability_PID_control(dt, current_tilt, target_tilt);
+		control_output = constrain(control_output, -max_control_output, max_control_output);
+
+		float motor_1_speed_old = motor_1_speed;
+		float motor_2_speed_old = motor_2_speed;
+
+		motor_1_speed = control_output - steering;
+		motor_2_speed = control_output + steering;
+
+
+		motor_1_speed = constrain(motor_1_speed, -max_control_output, max_control_output);
+		motor_2_speed = constrain(motor_2_speed, -max_control_output, max_control_output);
+
+
+		// WE LIMIT MAX ACCELERATION of the motors
+		  if ((motor_1_speed - motor_1_speed_old) > MAX_ACCEL)
+			  motor_1_speed -= MAX_ACCEL;
+		  else if ((motor_1_speed - motor_1_speed_old) < -MAX_ACCEL)
+			  motor_1_speed += MAX_ACCEL;
+		  else
+			  motor_1_speed = motor_1_speed;
+
+		  if ((motor_2_speed - motor_2_speed_old) > MAX_ACCEL)
+			  motor_2_speed -= MAX_ACCEL;
+		  else if ((motor_2_speed - motor_2_speed_old) < -MAX_ACCEL)
+			  motor_2_speed += MAX_ACCEL;
+		  else
+			  motor_2_speed = motor_2_speed;
+
+		//ESP_LOGI(tag, "Output: %0.2f, %0.2f, %0.2f", control_output, motor_1_speed, motor_2_speed);
+		if ((current_tilt < 76) && (current_tilt > -76)) // Is robot ready (upright?)
+		{
+			stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 46);
+			stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 46);
+
+			if ((current_tilt < 45) && (current_tilt > -45)) {
+				Kp_balance = KP_BALANCE;         // CONTROL GAINS FOR RAISE UP
+				Kd_balance = KD_BALANCE;
+				Kp_speed = KP_SPEED;
+				Ki_speed = KI_SPEED;
+			} else // We are in the raise up procedure => we use special control parameters
+			{
+				Kp_balance = KP_RAISEUP;         // CONTROL GAINS FOR RAISE UP
+				Kd_balance = KD_RAISEUP;
+				Kp_speed = 0;
+				Ki_speed = 0;
+			}
+		}
+		else
+		{
+			stepper_control_set_speed(STEPPER_MOTOR_1, 0);
+			stepper_control_set_speed(STEPPER_MOTOR_2, 0);
+			control_output = 0;
+			pid_error_sum = 0;
+
+				Kp_balance = 0.16;         // CONTROL GAINS FOR RAISE UP
+				Kd_balance = 44;
+				Kp_speed = 0;
+				Ki_speed = 0;
+
+		}
+
+		last_update = millis();
+
+		uint32_t loop_time = millis() - now;
+		//ESP_LOGI(tag, "Time: %d", loop_time);
+
+		vTaskDelay(max(1, (5 - loop_time)) / portTICK_PERIOD_MS);
+		//vTaskDelayUntil(&xLastWakeTime, 1000 / portTICK_PERIOD_MS); // 5 ms loop time
+		//delay_ms(5);
+	}
+    vTaskDelete(NULL);
+}
 void qrobot_rc_control_service(void *ignore)
 {
     ESP_LOGD(tag, ">> task_qrobot_read");
@@ -234,19 +423,21 @@ void ar6115e_input_handler(pulse_event_t event)
 
     switch (event.channel) {
         case THROTTLE:
-            current_speed_target = map(event.pulse_width, 1100, 1900, -100, 100);
+            current_speed_target = map_f(event.pulse_width, 1100, 1900, -1.0f, 1.0f);
             break;
         case AILERON:
-            steering_input = map(event.pulse_width, 1900, 1100, -5000, 5000);
+            steering_input = map_f(event.pulse_width, 1900, 1100, -1.0f, 1.0f);
             break;
         default:
             break;
 
     }
 
-   // ESP_LOGI(tag, "Steering: %d | Throttle: %d", (int)steering_input, (int)current_speed_target);
-    stepper_control_set_speed(STEPPER_MOTOR_1, min(10000, 10000 * (current_speed_target / 100.0) - steering_input));
-    stepper_control_set_speed(STEPPER_MOTOR_2, min(10000, 10000 * (current_speed_target / 100.0) + steering_input));
+    //ESP_LOGI(tag, "Steering: %d | Throttle: %d", (int)steering_input, (int)current_speed_target);
+
+
+   // stepper_control_set_speed(STEPPER_MOTOR_1, min(10000, 10000 * (current_speed_target / 100.0) - steering_input));
+    //stepper_control_set_speed(STEPPER_MOTOR_2, min(10000, 10000 * (current_speed_target / 100.0) + steering_input));
 
 }
 
@@ -332,7 +523,7 @@ void qrobot_init_amis30543_drivers()
     ESP_LOGI(tag, "Initializing AMIS-30543 (2)...\n");
     amis_30543_init(amis_motor_2); // Init
     amis_30543_reset(amis_motor_2); // Reset
-    amis_30543_set_current(amis_motor_2, 1000); // Set current limit to 1000ma
+    amis_30543_set_current(amis_motor_2, 1500); // Set current limit to 1000ma
     amis_30543_set_step_mode(amis_motor_2, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_right, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_2, true); // Enable motor output
@@ -360,6 +551,10 @@ void qrobot_init()
     //Init sensors
     qrobot_init_mpu9250(); // Init IMU
 
+    delay_ms(500);
+    ESP_LOGI(tag, "Gyro Calibration: Keep still for 10 seconds");
+    delay_ms(500);
+
     qrobot_init_adns(); // Init ADNS
 
     //Init motors
@@ -377,15 +572,32 @@ void qrobot_init()
     xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 4096, NULL, 3, NULL);
 #endif
 
+    // Gyro Calibration delay
+    delay_ms(5000);
+
+    // Little motor vibration and servo move to indicate that robot is ready
+      for (uint8_t k = 0; k < 5; k++)
+      {
+    	  stepper_control_set_speed(STEPPER_MOTOR_1, 5*46);
+    	  stepper_control_set_speed(STEPPER_MOTOR_2, 5*46);
+        //BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
+        delay_ms(200);
+        stepper_control_set_speed(STEPPER_MOTOR_1, -5*46);
+        stepper_control_set_speed(STEPPER_MOTOR_2, -5*46);
+        //BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
+        delay_ms(200);
+      }
+
+
+    robot_shutdown = true;
     //POST
    // stepper_control_set_speed(STEPPER_MOTOR_1, 5000);
    // stepper_control_set_speed(STEPPER_MOTOR_2, 2000);
 }
 void qrobot_start()
 {
-   // xTaskCreate(&task_qrobot_read, "qrobot_task", 2048, NULL, 3, NULL);
-
-
+	robot_shutdown = false;
+   xTaskCreate(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL);
 }
 
 

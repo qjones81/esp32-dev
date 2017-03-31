@@ -314,7 +314,7 @@ void app_main(void)
 
     //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
 
-    xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
+   // xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 

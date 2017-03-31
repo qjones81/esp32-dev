@@ -48,6 +48,7 @@
 //#define LOOP_INTERVAL   (100)   /*!< test interval for timer 0 */
 #define MAX_MOTORS 2 // Max number of motors allowed to be controlled.
 
+#define MAX_ACCEL 8
 stepper_motor_device_t *motor_devices[MAX_MOTORS] = { NULL };
 
 uint8_t num_devices = 0;
@@ -249,14 +250,20 @@ esp_err_t stepper_control_add_device(stepper_motor_type_t motor_t, stepper_motor
 }
 void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
 {
+
+
+	motor_devices[motor_t]->steps_second = steps_sec;
     //Set alarm value
     if(motor_t == STEPPER_MOTOR_1) {
+
         if(steps_sec == 0)
         {
             timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / 0.0001) * TIMER_SCALE_SEC);
         }
-        else
-            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(steps_sec)) * TIMER_SCALE_SEC);
+        else {
+
+            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
+        }
     }
     else {
         if(steps_sec == 0)
@@ -264,7 +271,7 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
                     timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.0001) * TIMER_SCALE_SEC);
                 }
                 else
-                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(steps_sec)) * TIMER_SCALE_SEC);
+                    timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
     }
     // 1 = clockwise, 0 = counter clockwise
     if(steps_sec <= 0)

@@ -33,4 +33,6 @@ extern int get_ms(unsigned long *count);
 extern int delay_ms(unsigned long num_ms);
 
 extern long map(long x, long in_min, long in_max, long out_min, long out_max);
+
+extern float map_f(float x, float in_min, float in_max, float out_min, float out_max);
 #endif /* UTILS_H_ */

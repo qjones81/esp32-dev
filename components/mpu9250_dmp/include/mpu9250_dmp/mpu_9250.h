@@ -66,7 +66,13 @@ void mpu_9250_compute_euler_angles(bool degrees);
 int mpu_9250_update_accel();
 int mpu_9250_update_gyro();
 int mpu_9250_update_compass();
-float mpu_9250_compute_heading();
+void mpu_9250_compute_heading();
+
+float mpu_9250_get_pitch();
+float mpu_9250_get_roll();
+float mpu_9250_get_yaw();
+float mpu_9250_get_heading();
+float mpu_9250_get_phi();
 
 bool mpu_9250_data_available();
 
