@@ -241,7 +241,7 @@ void app_main(void)
 //
 //    stepper_motor_device_config_t motor_2_cfg={
 //            .step_pin=GPIO_NUM_15,
-//            .dir_pin=GPIO_NUM_2,
+//          l  .dir_pin=GPIO_NUM_2,
 //            .step_hold_delay=10
 //        };
 //

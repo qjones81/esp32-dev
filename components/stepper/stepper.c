@@ -75,6 +75,7 @@ void task_stepper_control_1(void *ignore)
     	else {
     		motor_devices[STEPPER_MOTOR_1]->step_count++;
     	}
+    	//ESP_LOGI(tag, "Step: %d", motor_devices[STEPPER_MOTOR_1]->step_count);
     }
     vTaskDelete(NULL);
 }
@@ -246,8 +247,6 @@ esp_err_t stepper_control_add_device(stepper_motor_type_t motor_t, stepper_motor
 }
 void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
 {
-
-
 	motor_devices[motor_t]->steps_second = steps_sec;
     //Set alarm value
     if(motor_t == STEPPER_MOTOR_1) {

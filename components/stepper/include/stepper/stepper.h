@@ -71,7 +71,7 @@ typedef struct {
     int32_t step_count;
     TickType_t ticks;                         // Current Ticks
     TickType_t tick_target;                   // Tick Target
-    uint32_t steps_second;                  // Target speed in steps per second
+    int32_t steps_second;                  // Target speed in steps per second
     stepper_pulse_state_t state;            // State
 } stepper_motor_device_t;
 

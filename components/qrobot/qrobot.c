@@ -128,10 +128,11 @@ float max_linear_accel = 0.25f;
 float max_angular_speed = 1.0f;
 float max_angular_accel = 0.1f;
 
-float wheel_radius_left = 4.0f;
-float wheel_radius_right = 4.0f;
-float wheel_base = 5.0f;
-
+float wheel_radius_left = 0.045f; // 45 mm
+float wheel_radius_right = 0.045f; // 45 mm
+float wheel_base = .151f; // 151 mm
+uint16_t steps_per_rev = 3200;  // 1/16 microstepping
+uint8_t microsteps = 16;
 float control_output = 0.0f;
 //end save
 
@@ -466,19 +467,17 @@ void qrobot_odometry_task(void *ignore)
     uint32_t last_update = millis();
     while (1) {
 
-
     	wheel_1_step_prev = wheel_1_step;
     	wheel_2_step_prev = wheel_2_step;
     	wheel_1_step = stepper_control_get_position(STEPPER_MOTOR_1);
     	wheel_2_step = stepper_control_get_position(STEPPER_MOTOR_2);
 
+    	uint32_t now = millis();
+    	float velocity_l = (wheel_1_step - wheel_1_step_prev) / (1000.0f * (now - last_update)); // Steps per sec
 
-    	//uint32_t now = millis();
-    	//float velocity = (wheel_1_step - wheel_1_step_prev) / (now - last_update);
-
-    	//last_update = millis();
-    	//ESP_LOGI(tag, "Time: %d", loop_time);
-    	vTaskDelay(10 / portTICK_PERIOD_MS);
+    	last_update = now;
+    	ESP_LOGI(tag, "Velocity: %f", velocity_l);
+    	vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -515,8 +514,15 @@ void ar6115e_input_handler(pulse_event_t event)
 			break;
 		default:
 			break;
-
     }
+
+    stepper_control_set_speed(STEPPER_MOTOR_1,
+            (current_speed_target) * max_throttle * 46);
+    stepper_control_set_speed(STEPPER_MOTOR_2,
+            (current_speed_target) * max_throttle * 46);
+
+   // ESP_LOGI(tag, "Speed: %f", current_speed_target);
+
 }
 
 void qrobot_init_adns()
@@ -638,14 +644,14 @@ void qrobot_init()
 
 	ESP_LOGI(tag, "Initializing Sensors...");
     //Init sensors
-    qrobot_init_mpu9250(); // Init IMU
+    //qrobot_init_mpu9250(); // Init IMU
 
     uint32_t gyro_init_begin = millis();
-    delay_ms(500);
-    ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
-    delay_ms(500);
+   // delay_ms(500);
+   // ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
+   // /delay_ms(500);
 
-    qrobot_init_adns(); // Init ADNS
+    //qrobot_init_adns(); // Init ADNS
 
     //Init motors
    qrobot_init_stepper_motors(); // Init Steppers
@@ -663,24 +669,24 @@ void qrobot_init()
 
     // Gyro Calibration delay
     // TODO: Depends on time up until this po
-    delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
-
-	// Pulse motors for ready indication
-	for (uint8_t k = 0; k < 5; k++) {
-		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
-		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
-		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
-		delay_ms(200);
-		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
-		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
-
-		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
-		delay_ms(200);
-	}
-	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
-	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
-
-	delay_ms(500);
+//    delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
+//
+//	// Pulse motors for ready indication
+//	for (uint8_t k = 0; k < 5; k++) {
+//		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
+//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
+//		delay_ms(200);
+//		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
+//
+//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
+//		delay_ms(200);
+//	}
+//	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
+//	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
+//
+//	delay_ms(500);
 
 	// Reset Odometers...
 	robot_shutdown = true;
@@ -690,7 +696,9 @@ void qrobot_start()
 {
    robot_shutdown = false;
    robot_stable = false;
-   xTaskCreate(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL);
+//   xTaskCreate(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL);
+   // Start odometry
+   xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 5, NULL);
 }
 
 void qrobot_stop()
