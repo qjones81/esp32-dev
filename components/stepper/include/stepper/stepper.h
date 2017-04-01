@@ -104,6 +104,11 @@ void stepper_control_stop();
 void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec);
 
 /**
+ * @brief Reset step counter to zero
+ * @param motor_t: ID for stepper motor to controller.  Valid values (MOTOR_1, MOTOR_2)
+ */
+void stepper_control_reset_steps(stepper_motor_type_t motor_t);
+/**
  * @brief Get stepper motor device position from controller
  * @param motor_t: ID for stepper motor to controller.  Valid values (MOTOR_1, MOTOR_2)
  * @return: Current motor positionr

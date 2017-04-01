@@ -119,7 +119,7 @@ void socket_server_send_data(socket_device_t *device, uint8_t *data, size_t leng
             return;
         }
     }
-    ESP_LOGI(tag, "Sent Bytes: %d", sent_bytes);
+    //ESP_LOGI(tag, "Sent Bytes: %d", sent_bytes);
 }
 void socket_server_start(socket_device_t *device)
 {

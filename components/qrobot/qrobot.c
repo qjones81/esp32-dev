@@ -118,9 +118,6 @@ uint16_t max_steering = 250;
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
 
-float speed_m1 = 0.0f;
-float speed_m2 = 0.0f;
-
 //save to flash
 float max_linear_speed = 1.0f;
 float max_linear_accel = 0.25f;
@@ -128,13 +125,26 @@ float max_linear_accel = 0.25f;
 float max_angular_speed = 1.0f;
 float max_angular_accel = 0.1f;
 
-float wheel_radius_left = 0.045f; // 45 mm
-float wheel_radius_right = 0.045f; // 45 mm
+float wheel_radius_1 = 0.045f; // 45 mm (Right)
+float wheel_radius_2 = 0.045f; // 45 mm (Left)
 float wheel_base = .151f; // 151 mm
+float wheel_steps_per_m_1 = 11317.6848421; // steps per m (Right)
+float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
+
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
 uint8_t microsteps = 16;
 float control_output = 0.0f;
 //end save
+
+// robot pose
+float x_pos = 0.0f;
+float y_pos = 0.0f;
+float theta = 0.0f;
+
+float total_meters = 0.0f;
+float current_goal_x = 0.0f;
+float current_goal_y = 0.0f;
+float current_goal_theta = 0.0f;
 
 float pid_error_sum = 0.0f;
 float pid_balance_error_sum = 0.0f;
@@ -147,14 +157,18 @@ int throttle_dead_zone = 40;
 bool robot_shutdown = true;
 bool robot_stable = false;
 // Socket for Debug
-//socket_device_t *sock = NULL;
-
+socket_device_t *sock = NULL;
+static QueueHandle_t socket_debug_queue;
 // Sensors
 adns_3080_device_t *adns_sensor;
 
 // Motor Drivers
 amis_30543_device_t *amis_motor_1;
 amis_30543_device_t *amis_motor_2;
+
+typedef struct {
+	char data[80];
+} socket_event_t;
 
 #if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
 void qrobot_control_debug_service(void *ignore)
@@ -252,6 +266,24 @@ void qrobot_control_debug_service(void *ignore)
 }
 #endif
 
+
+void qrobot_socket_debug_task(void *ignore)
+{
+    ESP_LOGD(tag, ">> qrobot_socket_debug_task");
+    socket_event_t recvMe;
+    while (1) {
+
+    	xQueueReceive(socket_debug_queue, &recvMe, portMAX_DELAY);
+        //char str[80];
+        // TODO: Mutex Here or does volatile work here
+        //sprintf(str, "Hello\n");
+
+        //ESP_LOGI(tag, "%s",recvMe.data);
+        socket_server_send_data(sock, (uint8_t *)recvMe.data, strlen(recvMe.data) + 1);
+       // vTaskDelay(100/portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
 
 
 float qrobot_stability_PID_control(float dt, float input, float setpoint)
@@ -458,26 +490,80 @@ void qrobot_controller_task(void *ignore)
 
 void qrobot_odometry_task(void *ignore)
 {
+	// Right Wheel = Motor 1
+	// Left Wheel = Motor 2
 
     ESP_LOGD(tag, ">> qrobot_odometry_task");
     int32_t wheel_1_step_prev = 0;
     int32_t wheel_2_step_prev = 0;
     int32_t wheel_1_step = 0;
     int32_t wheel_2_step = 0;
-    uint32_t last_update = millis();
-    while (1) {
+    int32_t total_steps = 0;
+    float wheel_1_distance = 0;
+    float wheel_2_distance = 0;
+    float delta_m = 0;
+    int loop_count = 0;
+   // uint32_t last_update = millis();
 
-    	wheel_1_step_prev = wheel_1_step;
-    	wheel_2_step_prev = wheel_2_step;
-    	wheel_1_step = stepper_control_get_position(STEPPER_MOTOR_1);
-    	wheel_2_step = stepper_control_get_position(STEPPER_MOTOR_2);
+	while (1) {
 
-    	uint32_t now = millis();
-    	float velocity_l = (wheel_1_step - wheel_1_step_prev) / (1000.0f * (now - last_update)); // Steps per sec
+		wheel_1_step_prev = wheel_1_step;
+		wheel_2_step_prev = wheel_2_step;
+		wheel_1_step = stepper_control_get_position(STEPPER_MOTOR_1);
+		wheel_2_step = stepper_control_get_position(STEPPER_MOTOR_2);
 
-    	last_update = now;
-    	ESP_LOGI(tag, "Velocity: %f", velocity_l);
-    	vTaskDelay(100 / portTICK_PERIOD_MS);
+		//ESP_LOGI(tag, "X: %d, Y: %d", wheel_1_step, wheel_2_step);
+		wheel_1_distance = (wheel_1_step - wheel_1_step_prev)
+				/ wheel_steps_per_m_1; // meters
+		wheel_2_distance = (wheel_2_step - wheel_2_step_prev)
+				/ wheel_steps_per_m_2; // meters
+
+		delta_m = (wheel_1_distance + wheel_2_distance) * 0.5f;
+
+		total_meters += delta_m; // Update total odometry
+
+		// Update Theta
+		theta += (wheel_2_distance - wheel_1_distance) / wheel_base; // CW Positive
+
+		// Clip to +/- 360 Degrees
+		theta -= (float)((int)(theta/TWO_PI))*TWO_PI;
+
+		if (theta < -M_PI) {
+			theta += TWO_PI;
+		} else {
+			if (theta > M_PI)
+				theta -= TWO_PI;
+		}
+
+//		if(theta > TWO_PI)
+//		    theta -= TWO_PI;
+//		  else if(theta < -TWO_PI)
+//		    theta += TWO_PI;
+
+		// Update Position
+		x_pos += (delta_m * (cos(theta)));
+		y_pos += (delta_m * (sin(theta)));
+
+		//uint32_t now = millis();
+		//float velocity_l = (wheel_1_step - wheel_1_step_prev) / (1000.0f * (now - last_update)); // Steps per sec
+
+		//last_update = now;
+
+		loop_count++;
+
+    	if(loop_count >= 100)
+    	{
+			//ESP_LOGI(tag, "Pose: X: %f, Y: %f, Theta: %f", x_pos, y_pos, theta);
+			socket_event_t socket_event;
+			 sprintf(socket_event.data, "Pose: X: %f, Y: %f, Theta: %f\n",  x_pos, y_pos, theta);
+
+			//sprintf(socket_event.data, "Test: %d\n", 100);
+
+			xQueueSendToBack(socket_debug_queue, &socket_event, NULL);
+			loop_count = 0;
+    	}
+
+    	vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -516,10 +602,20 @@ void ar6115e_input_handler(pulse_event_t event)
 			break;
     }
 
-    stepper_control_set_speed(STEPPER_MOTOR_1,
-            (current_speed_target) * max_throttle * 46);
-    stepper_control_set_speed(STEPPER_MOTOR_2,
-            (current_speed_target) * max_throttle * 46);
+//	float throttle = (current_speed_target) * max_throttle;
+//	float steering = (steering_input) * max_steering;
+//
+//	float motor_1_speed = throttle - steering;
+//	float motor_2_speed = throttle + steering;
+//
+//	motor_1_speed = constrain(motor_1_speed, -max_control_output,
+//			max_control_output);
+//	motor_2_speed = constrain(motor_2_speed, -max_control_output,
+//			max_control_output);
+//
+//	stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 46);
+//	stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 46);
+
 
    // ESP_LOGI(tag, "Speed: %f", current_speed_target);
 
@@ -644,12 +740,12 @@ void qrobot_init()
 
 	ESP_LOGI(tag, "Initializing Sensors...");
     //Init sensors
-    //qrobot_init_mpu9250(); // Init IMU
+    qrobot_init_mpu9250(); // Init IMU
 
     uint32_t gyro_init_begin = millis();
-   // delay_ms(500);
-   // ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
-   // /delay_ms(500);
+    delay_ms(500);
+    ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
+    delay_ms(500);
 
     //qrobot_init_adns(); // Init ADNS
 
@@ -662,33 +758,53 @@ void qrobot_init()
    // Init Control
    qrobot_init_ar6115e(); // RC input
 
+
+
+    // Gyro Calibration delay
+    delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
+
+	// Pulse motors for ready indication
+	for (uint8_t k = 0; k < 5; k++) {
+		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
+		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
+		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
+		delay_ms(200);
+		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
+		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
+
+		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
+		delay_ms(200);
+	}
+	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
+	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
+
     //Init sockets
 #if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
     xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 4096, NULL, 3, NULL);
 #endif
 
-    // Gyro Calibration delay
-    // TODO: Depends on time up until this po
-//    delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
-//
-//	// Pulse motors for ready indication
-//	for (uint8_t k = 0; k < 5; k++) {
-//		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
-//		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
-//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
-//		delay_ms(200);
-//		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
-//		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
-//
-//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
-//		delay_ms(200);
-//	}
-//	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
-//	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
-//
-//	delay_ms(500);
+//#if defined(CONFIG_AR6115_USE_DEBUG_SERVICE)
+        sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+        sock->port = 9090;
+        socket_server_init(sock);
+        socket_server_start(sock);
+        socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
+        xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
+//#endif
+
+
+	delay_ms(500);
+
+
+    // Setup Robot Parameters
+    steps_per_rev = microsteps * 200;
+    wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_radius_1 * 2); // steps per m (Right)
+    wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_radius_2 * 2); // steps per m (Left)
 
 	// Reset Odometers...
+    stepper_control_reset_steps(STEPPER_MOTOR_1);
+    stepper_control_reset_steps(STEPPER_MOTOR_2);
+
 	robot_shutdown = true;
 	robot_stable = false;
 }
@@ -696,8 +812,11 @@ void qrobot_start()
 {
    robot_shutdown = false;
    robot_stable = false;
-//   xTaskCreate(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL);
-   // Start odometry
+
+   // Start main controller task
+   xTaskCreate(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL);
+
+   // Start odometry task
    xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 5, NULL);
 }
 

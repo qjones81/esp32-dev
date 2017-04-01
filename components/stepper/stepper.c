@@ -105,10 +105,10 @@ void stepper_control_start()
     xTaskCreatePinnedToCore(&task_stepper_control_2, "stepper_control_2", 2048, NULL, 7, NULL, 1);
 
     // Create queue for receiving
-
-    step_1_queue = xQueueCreate(10, sizeof(uint8_t));
+    step_1_queue = xQueueCreate(25, sizeof(uint8_t));
     // Create queue for receiving
-    step_2_queue = xQueueCreate(10, sizeof(uint8_t));
+    step_2_queue = xQueueCreate(25, sizeof(uint8_t));
+
     // Create Semaphore
    // vSemaphoreCreateBinary(timer_tick);
     //timer_queue = xQueueCreate(10, sizeof(timer_event_t));
@@ -270,7 +270,10 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
     else
         gpio_set_level(motor_devices[motor_t]->cfg.dir_pin, motor_devices[motor_t]->cfg.dir_reverse ? 1 : 0);
 }
-
+void stepper_control_reset_steps(stepper_motor_type_t motor_t)
+{
+	motor_devices[motor_t]->step_count = 0;
+}
 int32_t stepper_control_get_position(stepper_motor_type_t motor_t)
 {
 	return motor_devices[motor_t]->step_count;

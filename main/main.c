@@ -114,7 +114,7 @@ void task_servoSweep(void *ignore) {
     int maxValue        = 2500; // micro seconds (uS)
     int sweepDuration   = 1500; // milliseconds (ms)
     int duty            = (1<<bitSize) * minValue / 20000 ;
-    int direction       = 1; // 1 = up, -1 = down
+   // int direction       = 1; // 1 = up, -1 = down
     int valueChangeRate = 20; // msecs
 
     ESP_LOGD(tag, ">> task_servo1");
@@ -136,7 +136,7 @@ void task_servoSweep(void *ignore) {
 
     int changesPerSweep = sweepDuration / valueChangeRate;
     int changeDelta = (maxValue-minValue) / changesPerSweep;
-    int i;
+    //int i;
     ESP_LOGD(tag, "sweepDuration: %d seconds", sweepDuration);
     ESP_LOGD(tag, "changesPerSweep: %d", changesPerSweep);
     ESP_LOGD(tag, "changeDelta: %d", changeDelta);
@@ -183,7 +183,7 @@ void app_main(void)
 
     //   amis_30543_device_t amis_test;
 
-    /*
+
     // Wifi Config
     wifi_config_t sta_config;
     memset(&sta_config, 0, sizeof(sta_config));
@@ -198,7 +198,7 @@ void app_main(void)
 
     // TODO: Delay and Wait for IP address
     // POLL For Connection
-    delay_ms(5000);*/
+    //delay_ms(5000);
 
     qrobot_init();
 

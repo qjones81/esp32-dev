@@ -21,6 +21,22 @@
 #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
+#ifndef TWO_PI
+#define TWO_PI 6.28318530718f
+#endif
+
+#ifndef DEGS_TO_RADS
+#define DEGS_TO_RADS 57.2957795131f
+#endif
+
+#ifndef RADS_TO_DEGS
+#define RADS_TO_DEGS 0.01745329252f
+#endif
+
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
 extern uint32_t IRAM_ATTR micros();
