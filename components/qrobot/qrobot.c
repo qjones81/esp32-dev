@@ -118,7 +118,7 @@ float max_target_tilt = 40.0f;
 
 float max_control_output = 500.0f;
 float control_output = 0.0f;
-uint16_t max_throttle = 500;
+uint16_t max_throttle = 300;
 uint16_t max_steering = 250;
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
@@ -274,13 +274,13 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 3) {
-					int sent_bytes = send(client_sock, "OK\n", 10, 0);
+					int sent_bytes = send(client_sock, "OK\n", 3, 0);
 					current_goal_x = atof(params[0]);
 					current_goal_y = atof(params[1]);
 					current_goal_theta = atof(params[2]);
 					robot_in_navigation = true;
 				} else {
-					send(client_sock, "INVALID\n", 12, 0);
+					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
 			else if(!strncmp(data, "PID",3))
@@ -295,12 +295,12 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 3) {
-					int sent_bytes = send(client_sock, "OK\n", 10, 0);
+					int sent_bytes = send(client_sock, "OK\n", 3, 0);
 					goto_goal_pid.k_p = atof(params[0]);
 					goto_goal_pid.k_i = atof(params[1]);
 					goto_goal_pid.k_d = atof(params[2]);
 				} else {
-					send(client_sock, "INVALID\n", 12, 0);
+					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
 		}
@@ -323,7 +323,7 @@ void qrobot_socket_debug_task(void *ignore)
     	xQueueReceive(socket_debug_queue, &recvMe, portMAX_DELAY);
         //ESP_LOGI(tag, "%s",recvMe.data);
         socket_server_send_data(sock, (uint8_t *)recvMe.data, strlen(recvMe.data) + 1);
-        vTaskDelay(5/portTICK_PERIOD_MS); // Slow it down a bit...
+        vTaskDelay(100/portTICK_PERIOD_MS); // Slow it down a bit...
     }
     vTaskDelete(NULL);
 }
@@ -545,7 +545,7 @@ void qrobot_controller_task(void *ignore)
 
 
 
-		throttle = (speed_output) * 250;
+		throttle = (speed_output) * max_throttle;
 		steering = (steering_input) * max_steering;
 
 		target_tilt = qrobot_speed_PID_control(dt, estimated_speed_filtered, -throttle);
