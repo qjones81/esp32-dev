@@ -25,6 +25,7 @@
 #include <lwip/sockets.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -44,6 +45,7 @@
 #include "adns3080/adns3080.h"
 #include "stepper/stepper.h"
 #include "ar6115e/ar6115e.h"
+#include "pid/pid.h"
 #include "utils/utils.h"
 #include "wifi/wifi.h"
 #include "sockets/socket_server.h"
@@ -59,7 +61,9 @@ static const char *tag = "qrobot";
 #define KP_SPEED 0.09f
 #define KI_SPEED 0.1f
 
-#define MAX_ACCEL 7
+#define MAX_ACCEL 10
+
+#define DEBUG_STACK_BUFFER_SIZE 80
 
 // save/load to flash
 float Kp_position = 1.0f;
@@ -112,9 +116,11 @@ float current_tilt_error = 0.0f;
 float prev_tilt_error = 0.0f;
 float max_target_tilt = 40.0f;
 
-float max_control_output = 500;
+float max_control_output = 500.0f;
+float control_output = 0.0f;
 uint16_t max_throttle = 500;
 uint16_t max_steering = 250;
+
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
 
@@ -133,7 +139,6 @@ float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
 uint8_t microsteps = 16;
-float control_output = 0.0f;
 //end save
 
 // robot pose
@@ -148,17 +153,21 @@ float current_goal_theta = 0.0f;
 
 float pid_error_sum = 0.0f;
 float pid_balance_error_sum = 0.0f;
-uint32_t stable_time = 0;
 float steering_input = 0.0f;
+
+uint32_t stable_time = 0;
 
 int steering_dead_zone = 40;
 int throttle_dead_zone = 40;
 
 bool robot_shutdown = true;
 bool robot_stable = false;
+
+bool robot_in_navigation = false;
 // Socket for Debug
 socket_device_t *sock = NULL;
 static QueueHandle_t socket_debug_queue;
+
 // Sensors
 adns_3080_device_t *adns_sensor;
 
@@ -166,11 +175,14 @@ adns_3080_device_t *adns_sensor;
 amis_30543_device_t *amis_motor_1;
 amis_30543_device_t *amis_motor_2;
 
+// PIDS
+pid_device_control_t goto_goal_pid;
+
 typedef struct {
-	char data[80];
+	char data[DEBUG_STACK_BUFFER_SIZE];
 } socket_event_t;
 
-#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
+#if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
 void qrobot_control_debug_service(void *ignore)
 {
     struct sockaddr_in client_address;
@@ -186,7 +198,7 @@ void qrobot_control_debug_service(void *ignore)
     // Bind socket to port
     server_address.sin_family = AF_INET;
     server_address.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_address.sin_port = htons(CONFIG_QROBOT_DEBUG_PORT);
+    server_address.sin_port = htons(CONFIG_QROBOT_CONTROL_PORT);
     int ret = bind(sock, (struct sockaddr *) &server_address,
             sizeof(server_address));
     if (ret < 0) {
@@ -204,6 +216,7 @@ void qrobot_control_debug_service(void *ignore)
     int total = 2048; // 2 KB buffer
     //char *data = malloc(total);
     char data[2048];
+    char params[10][20]; // 10 Max
     while (1) { // Listen for a new client connection.
 
         socklen_t client_address_length = sizeof(client_address);
@@ -239,23 +252,59 @@ void qrobot_control_debug_service(void *ignore)
         ESP_LOGD(tag, "Data read (size: %d) was: %.*s", size_used, size_used,
                 data);
 
-        if(!strncmp(data, "Hello",5))
-        {
-            ESP_LOGI(tag, "Got HELLO!!!");
+		// Check for commands
+		char* token = strtok(data, " ");
+		if(token)
+		{
+			if(!strncmp(data, "RESET",5))
+			{
+				current_goal_x = current_goal_y = current_goal_theta = 0;
+				x_pos = y_pos = theta = 0;
+				robot_in_navigation = false;
+			}
+			else if(!strncmp(data, "GOAL",4))
+			{
+				token = strtok(NULL, " ");
+				int counter = 0;
+				while (token) {
+					strcpy(params[counter], token);
+					printf("token: %s\n", params[counter]);
+					token = strtok(NULL, " ");
+					counter++;
+				}
 
-            int sent_bytes = send(client_sock, "GOTHELLO", 9, 0);
-            if (sent_bytes == -1) {
-                ESP_LOGE(tag, "ERROR:  Unable to send data:  send(): %s",
-                        strerror(errno));
+				if(counter == 3) {
+					int sent_bytes = send(client_sock, "OK\n", 10, 0);
+					current_goal_x = atof(params[0]);
+					current_goal_y = atof(params[1]);
+					current_goal_theta = atof(params[2]);
+					robot_in_navigation = true;
+				} else {
+					send(client_sock, "INVALID\n", 12, 0);
+				}
+			}
+			else if(!strncmp(data, "PID",3))
+			{
+				token = strtok(NULL, " ");
+				int counter = 0;
+				while (token) {
+					strcpy(params[counter], token);
+					printf("token: %s\n", params[counter]);
+					token = strtok(NULL, " ");
+					counter++;
+				}
 
-                //if (errno == ECONNRESET) {
-                // TODO: Remove connection and don't send BLAH BLAH
-                //socket_server_disconnect(device);
-                //return;
-                //}
-            }
-            ESP_LOGI(tag, "Sent Bytes: %d", sent_bytes);
-        }
+				if(counter == 3) {
+					int sent_bytes = send(client_sock, "OK\n", 10, 0);
+					goto_goal_pid.k_p = atof(params[0]);
+					goto_goal_pid.k_i = atof(params[1]);
+					goto_goal_pid.k_d = atof(params[2]);
+				} else {
+					send(client_sock, "INVALID\n", 12, 0);
+				}
+			}
+		}
+
        // free(data);
 
         // Do something with request.
@@ -266,25 +315,36 @@ void qrobot_control_debug_service(void *ignore)
 }
 #endif
 
-
 void qrobot_socket_debug_task(void *ignore)
 {
     ESP_LOGD(tag, ">> qrobot_socket_debug_task");
     socket_event_t recvMe;
     while (1) {
-
     	xQueueReceive(socket_debug_queue, &recvMe, portMAX_DELAY);
-        //char str[80];
-        // TODO: Mutex Here or does volatile work here
-        //sprintf(str, "Hello\n");
-
         //ESP_LOGI(tag, "%s",recvMe.data);
         socket_server_send_data(sock, (uint8_t *)recvMe.data, strlen(recvMe.data) + 1);
-       // vTaskDelay(100/portTICK_PERIOD_MS);
+        vTaskDelay(5/portTICK_PERIOD_MS); // Slow it down a bit...
     }
     vTaskDelete(NULL);
 }
 
+void qrobot_send_debug(char * format, ...)
+{
+#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
+	char temp[DEBUG_STACK_BUFFER_SIZE];
+	socket_event_t socket_event;
+	va_list arg;
+	va_start(arg, format);
+
+  int len = vsnprintf(temp, sizeof(temp) - 1, format, arg);
+  if (len > 0) {
+	  sprintf(socket_event.data, "%s\n", temp);
+	  xQueueSendToBack(socket_debug_queue, &socket_event, ( TickType_t ) 0);
+  }
+  va_end(arg);
+
+#endif
+}
 
 float qrobot_stability_PID_control(float dt, float input, float setpoint)
 {
@@ -306,7 +366,6 @@ float qrobot_stability_PID_control(float dt, float input, float setpoint)
 		robot_stable = false;
 		return 0;
 	}
-
 
 	// Kd is implemented in two parts
 	//    The biggest one using only the input (sensor) part not the SetPoint input-input(t-2)
@@ -335,7 +394,6 @@ float qrobot_speed_PID_control(float dt, float input, float setPoint)
   return (output);
 }
 
-
 void qrobot_controller_task(void *ignore)
 {
     ESP_LOGD(tag, ">> qrobot_controller_task");
@@ -359,6 +417,69 @@ void qrobot_controller_task(void *ignore)
 	float estimated_speed = 0.0f;
 
 
+	memset(&goto_goal_pid, 0, sizeof(pid_device_control_t));
+
+	goto_goal_pid.k_p = 2.2f;
+	goto_goal_pid.k_i = 0.0f;
+	goto_goal_pid.k_d = 0.4f;
+	goto_goal_pid.integral_windup_max = 1000;
+	goto_goal_pid.output_min = -1.0f;
+	goto_goal_pid.output_max = 1.0f;
+	goto_goal_pid.clamp_output = true;
+
+//	vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+	//ESP_LOGD(tag, "Begin Nav Test!");
+//	while(1)
+//	{
+//		if (robot_shutdown) {
+//			last_update = millis();
+//			vTaskDelay(100 / portTICK_PERIOD_MS);
+//			continue;
+//		}
+//
+//
+//		goto_goal_pid.set_point = target_x;
+//		goto_goal_pid.input = x_pos;
+//
+//		float control_output = pid_compute(&goto_goal_pid);
+//		float throttle = (control_output) * 100;
+//		float steering = (steering_input) * max_steering;
+//
+//		motor_1_speed_old = motor_1_speed;
+//		motor_2_speed_old = motor_2_speed;
+//
+//		motor_1_speed = throttle - steering;
+//		motor_2_speed = throttle + steering;
+//
+//
+//		motor_1_speed = constrain(motor_1_speed, -max_control_output,
+//				max_control_output) * 46;
+//		motor_2_speed = constrain(motor_2_speed, -max_control_output,
+//				max_control_output) * 46;
+//
+//
+//	//	 WE LIMIT MAX ACCELERATION of the motors
+//				if ((motor_1_speed - motor_1_speed_old) > MAX_ACCEL)
+//					motor_1_speed -= MAX_ACCEL;
+//				else if ((motor_1_speed - motor_1_speed_old) < -MAX_ACCEL)
+//					motor_1_speed += MAX_ACCEL;
+//				else
+//					motor_1_speed = motor_1_speed;
+//
+//				if ((motor_2_speed - motor_2_speed_old) > MAX_ACCEL)
+//					motor_2_speed -= MAX_ACCEL;
+//				else if ((motor_2_speed - motor_2_speed_old) < -MAX_ACCEL)
+//					motor_2_speed += MAX_ACCEL;
+//				else
+//					motor_2_speed = motor_2_speed;
+//
+//
+//		stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed);
+//		vTaskDelay(5 / portTICK_PERIOD_MS);
+//	}
+
 	while (1) {
 		if(robot_shutdown)
 		{
@@ -379,9 +500,17 @@ void qrobot_controller_task(void *ignore)
 			vTaskDelay(100 / portTICK_PERIOD_MS);
 			continue;
 		}
-		//bool check = !robot_stable && (!equal_f(current_speed_target, 0, 0.01) || !equal_f(steering_input, 0, 0.01));
-	//	ESP_LOGI(tag, "Stable: %d, HERE NOT: %f/%f/%d", robot_stable,current_speed_target,steering_input, check);
-//
+
+		// Update Navigation. TODO: Move to task?
+		float x = current_goal_x - x_pos;
+		float y = current_goal_y - y_pos;
+
+		float target_distance = sqrt((x*x)+(y*y));
+
+		if(target_distance <= 0.1)
+		{
+			//robot_in_navigation = false;
+		}
 		now = millis();
 		dt = (now - last_update);
 
@@ -400,7 +529,23 @@ void qrobot_controller_task(void *ignore)
 
 				// SPEED CONTROL: This is a PI controller.
 				//    input:user throttle, variable: estimated robot speed, output: target robot angle to get the desired speed
-		throttle = (current_speed_target) * max_throttle;
+
+
+		// Check if we have arrived
+		float speed_output =  0;
+		if(robot_in_navigation)
+		{
+			goto_goal_pid.set_point = current_goal_x;
+			goto_goal_pid.input = x_pos;
+
+			speed_output = pid_compute(&goto_goal_pid);
+		} else {
+			speed_output = current_speed_target;
+		}
+
+
+
+		throttle = (speed_output) * 250;
 		steering = (steering_input) * max_steering;
 
 		target_tilt = qrobot_speed_PID_control(dt, estimated_speed_filtered, -throttle);
@@ -435,7 +580,7 @@ void qrobot_controller_task(void *ignore)
 
 		if ((current_tilt < 76) && (current_tilt > -76)) // Is robot ready (upright?)
 		{
-			if(robot_stable == false && stable_time > 2000)
+			if(robot_stable == false && stable_time > 100)
 			{
 				// ESP_LOGI(tag, "Robot Is Stable...\n");
 				robot_stable = true;
@@ -498,7 +643,6 @@ void qrobot_odometry_task(void *ignore)
     int32_t wheel_2_step_prev = 0;
     int32_t wheel_1_step = 0;
     int32_t wheel_2_step = 0;
-    int32_t total_steps = 0;
     float wheel_1_distance = 0;
     float wheel_2_distance = 0;
     float delta_m = 0;
@@ -528,6 +672,7 @@ void qrobot_odometry_task(void *ignore)
 		// Clip to +/- 360 Degrees
 		theta -= (float)((int)(theta/TWO_PI))*TWO_PI;
 
+		// Keep to +/- 180 Degrees
 		if (theta < -M_PI) {
 			theta += TWO_PI;
 		} else {
@@ -535,34 +680,17 @@ void qrobot_odometry_task(void *ignore)
 				theta -= TWO_PI;
 		}
 
-//		if(theta > TWO_PI)
-//		    theta -= TWO_PI;
-//		  else if(theta < -TWO_PI)
-//		    theta += TWO_PI;
-
 		// Update Position
 		x_pos += (delta_m * (cos(theta)));
 		y_pos += (delta_m * (sin(theta)));
 
-		//uint32_t now = millis();
-		//float velocity_l = (wheel_1_step - wheel_1_step_prev) / (1000.0f * (now - last_update)); // Steps per sec
-
-		//last_update = now;
-
-		loop_count++;
-
     	if(loop_count >= 100)
     	{
 			//ESP_LOGI(tag, "Pose: X: %f, Y: %f, Theta: %f", x_pos, y_pos, theta);
-			socket_event_t socket_event;
-			 sprintf(socket_event.data, "Pose: X: %f, Y: %f, Theta: %f\n",  x_pos, y_pos, theta);
-
-			//sprintf(socket_event.data, "Test: %d\n", 100);
-
-			xQueueSendToBack(socket_debug_queue, &socket_event, NULL);
+    		qrobot_send_debug("Pose: X: %f, Y: %f, Theta: %f\n",  x_pos, y_pos, theta);
 			loop_count = 0;
     	}
-
+    	loop_count++;
     	vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
@@ -572,11 +700,6 @@ void ar6115e_input_handler(pulse_event_t event)
     // Aileron Left = 2000, Right = 1000
     // Throttle Down = 1000, Up = 2000
 
-//	if (robot_stable == false) // If robot not stable IGNORE any inputs
-//	{
-//		current_speed_target = steering_input = 0;
-//		return;
-//	}
 	switch (event.channel) {
 		case THROTTLE:
 			if (abs(event.pulse_width - 1500) < throttle_dead_zone) { // Handle Dead Zones...
@@ -601,7 +724,6 @@ void ar6115e_input_handler(pulse_event_t event)
 		default:
 			break;
     }
-
 //	float throttle = (current_speed_target) * max_throttle;
 //	float steering = (steering_input) * max_steering;
 //
@@ -615,9 +737,6 @@ void ar6115e_input_handler(pulse_event_t event)
 //
 //	stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 46);
 //	stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 46);
-
-
-   // ESP_LOGI(tag, "Speed: %f", current_speed_target);
 
 }
 
@@ -665,13 +784,12 @@ void qrobot_init_mpu9250()
 }
 void qrobot_init_amis30543_drivers()
 {
-
     // TODO: Update CS pins to new board
     // Init Memory
     amis_motor_1 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
 
-    //Left
+    // Right
     // 10Mhz, Mode 0
     ESP_LOGI(tag, "Adding AMIS-30543 (1) to SPI Bus...\n");
     ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_5, 1000000, 0, &amis_motor_1->spi_device)); // TODO: Pass In Values
@@ -691,7 +809,7 @@ void qrobot_init_amis30543_drivers()
     bool verified = amis_30543_verify(amis_motor_1);
     ESP_LOGI(tag, "AMIS-30543 Initialized (1) %d.\n", verified);
 
-    // Right
+    // Left
     amis_motor_2 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
 
@@ -728,40 +846,38 @@ void qrobot_init_stepper_motors()
     stepper_control_add_device(STEPPER_MOTOR_2, motor_2_cfg);
     stepper_control_start();
 }
+
 void qrobot_init()
 {
 	ESP_LOGI(tag, "QRobot by Quincy Jones v1.0.  USE AT YOUR OWN RISK!\n\n");
 
-    // Init SPI Bus
-    ESP_LOGI(tag, "Initializing SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
-    ESP_LOGI(tag, "SPI Bus Initialized.\n");
-
+	// Init SPI Bus
+	ESP_LOGI(tag, "Initializing SPI Bus...\n");
+	ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
+	ESP_LOGI(tag, "SPI Bus Initialized.\n");
 
 	ESP_LOGI(tag, "Initializing Sensors...");
-    //Init sensors
-    qrobot_init_mpu9250(); // Init IMU
+	//Init sensors
+	qrobot_init_mpu9250(); // Init IMU
 
-    uint32_t gyro_init_begin = millis();
-    delay_ms(500);
-    ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
-    delay_ms(500);
+	uint32_t gyro_init_begin = millis();
+	delay_ms(500);
+	ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
+	delay_ms(500);
 
-    //qrobot_init_adns(); // Init ADNS
+	//qrobot_init_adns(); // Init ADNS
 
-    //Init motors
-   qrobot_init_stepper_motors(); // Init Steppers
+	//Init motors
+	qrobot_init_stepper_motors(); // Init Steppers
 
-   // Init Drivers
-   qrobot_init_amis30543_drivers(); // Init motor drivers
+	// Init Drivers
+	qrobot_init_amis30543_drivers(); // Init motor drivers
 
-   // Init Control
-   qrobot_init_ar6115e(); // RC input
+	// Init Control
+	qrobot_init_ar6115e(); // RC input
 
-
-
-    // Gyro Calibration delay
-    delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
+	// Gyro Calibration delay
+	delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
 
 	// Pulse motors for ready indication
 	for (uint8_t k = 0; k < 5; k++) {
@@ -778,35 +894,34 @@ void qrobot_init()
 	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
 	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
 
-    //Init sockets
-#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
-    xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 4096, NULL, 3, NULL);
-#endif
+	//Init sockets
+	#if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
+		xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 8192, NULL, 3, NULL);
+	#endif
 
-//#if defined(CONFIG_AR6115_USE_DEBUG_SERVICE)
-        sock = (socket_device_t *) malloc(sizeof(socket_device_t));
-        sock->port = 9090;
-        socket_server_init(sock);
-        socket_server_start(sock);
-        socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
-        xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
-//#endif
-
-
+	#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
+		sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+		sock->port = CONFIG_QROBOT_DEBUG_PORT;
+		socket_server_init(sock);
+		socket_server_start(sock);
+		socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
+		xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
+	#endif
 	delay_ms(500);
 
-
-    // Setup Robot Parameters
-    steps_per_rev = microsteps * 200;
-    wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_radius_1 * 2); // steps per m (Right)
-    wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_radius_2 * 2); // steps per m (Left)
+	// Setup Robot Parameters
+	steps_per_rev = microsteps * 200;
+	wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_radius_1 * 2); // steps per m (Right)
+	wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_radius_2 * 2); // steps per m (Left)
 
 	// Reset Odometers...
-    stepper_control_reset_steps(STEPPER_MOTOR_1);
-    stepper_control_reset_steps(STEPPER_MOTOR_2);
+	stepper_control_reset_steps(STEPPER_MOTOR_1);
+	stepper_control_reset_steps(STEPPER_MOTOR_2);
 
 	robot_shutdown = true;
 	robot_stable = false;
+	robot_in_navigation = false;
+
 }
 void qrobot_start()
 {

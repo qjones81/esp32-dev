@@ -11,8 +11,22 @@ config QROBOT_USE_DEBUG_SERVICE
 config QROBOT_DEBUG_PORT
     int "Port Number"
     depends on QROBOT_USE_DEBUG_SERVICE
+    default 9090
+    help
+        Port number for debug service to listen.
+        
+config QROBOT_USE_CONTROL_SERVICE
+    bool "Enable Network Control"
+    default n
+    help
+        Enable debug over server socket.
+
+config QROBOT_CONTROL_PORT
+    int "Port Number"
+    depends on QROBOT_USE_CONTROL_SERVICE
     default 9000
     help
         Port number for debug service to listen.
+        
 
 endmenu
