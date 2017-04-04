@@ -30,11 +30,11 @@
 #endif
 
 #ifndef DEGS_TO_RADS
-#define DEGS_TO_RADS 57.2957795131f
+#define DEGS_TO_RADS 0.01745329252f
 #endif
 
 #ifndef RADS_TO_DEGS
-#define RADS_TO_DEGS 0.01745329252f
+#define RADS_TO_DEGS 57.2957795131f
 #endif
 
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))

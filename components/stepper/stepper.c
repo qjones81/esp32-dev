@@ -64,7 +64,6 @@ void task_stepper_control_1(void *ignore)
 {
     // Init Timers
     if (motor_devices[STEPPER_MOTOR_1] != NULL) stepper_control_timer_init_0();
-    //if (motor_devices[STEPPER_MOTOR_2] != NULL) stepper_control_timer_init_1();
 
     uint8_t recv;
     while(1) {
@@ -83,7 +82,6 @@ void task_stepper_control_1(void *ignore)
 void task_stepper_control_2(void *ignore)
 {
     // Init Timers
-    //if (motor_devices[STEPPER_MOTOR_1] != NULL) stepper_control_timer_init_0();
     if (motor_devices[STEPPER_MOTOR_2] != NULL) stepper_control_timer_init_1();
 
 	uint8_t recv;
@@ -250,9 +248,8 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
 	motor_devices[motor_t]->steps_second = steps_sec;
     //Set alarm value
     if(motor_t == STEPPER_MOTOR_1) {
-
         if(steps_sec == 0) {
-            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / 0.0001) * TIMER_SCALE_SEC);
+            timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / 0.00001) * TIMER_SCALE_SEC);
         }
         else {
             timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
@@ -260,7 +257,7 @@ void stepper_control_set_speed(stepper_motor_type_t motor_t, int32_t steps_sec)
     }
     else {
 		if (steps_sec == 0) {
-			timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.0001) * TIMER_SCALE_SEC);
+			timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / 0.00001) * TIMER_SCALE_SEC);
 		} else
 			timer_set_alarm_value(TIMER_GROUP_0, TIMER_1, (1.0 / abs(motor_devices[motor_t]->steps_second)) * TIMER_SCALE_SEC);
 	}

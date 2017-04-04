@@ -40,7 +40,7 @@ float pid_compute(pid_device_control_t *controller)
 
 	// Update time deltas
 	float now = millis();
-	float dt = (now - controller->last_time) * 0.001f;
+	float dt = (now - controller->last_time);
 
 	// Error Term
 	float error = controller->set_point - controller->input;
@@ -51,7 +51,47 @@ float pid_compute(pid_device_control_t *controller)
 	// Compute integral term
 	controller->integral_error += error * dt; // constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
 	controller->integral_error = constrain(controller->integral_error, -controller->integral_windup_max, controller->integral_windup_max);
-	float i_term = (controller->k_i * controller->integral_error); // dt is milliseconds
+	float i_term = (controller->k_i * controller->integral_error);
+
+	// Compute derivative term
+	float d_error = (error - controller->error_prev) / dt;
+	float d_term = controller->k_d * d_error;
+
+	// Compute output
+	output = p_term + i_term + d_term;
+
+	// Clamp output
+	if(controller->clamp_output) {
+		output = constrain(output, controller->output_min, controller->output_max);
+	}
+
+	// Update state
+	controller->error_prev = error;
+	controller->last_time = now;
+
+	// Return
+	return (output);
+}
+
+float pid_compute_angle(pid_device_control_t *controller)
+{
+	float output;
+
+	// Update time deltas
+	float now = millis();
+	float dt = (now - controller->last_time);
+
+	// Error Term
+	float error = controller->set_point - controller->input;
+	error = atan2(sin(error),cos(error)); // Keep between -PI and PI
+
+	// Compute proportional term
+	float p_term = controller->k_p * error;
+
+	// Compute integral term
+	controller->integral_error += error * dt; // constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
+	controller->integral_error = constrain(controller->integral_error, -controller->integral_windup_max, controller->integral_windup_max);
+	float i_term = (controller->k_i * controller->integral_error);
 
 	// Compute derivative term
 	float d_error = (error - controller->error_prev) / dt;

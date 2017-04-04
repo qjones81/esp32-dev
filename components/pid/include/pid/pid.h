@@ -60,6 +60,7 @@ typedef struct {
  */
 float pid_compute(pid_device_control_t *controller);
 
+float pid_compute_angle(pid_device_control_t *controller);
 #ifdef __cplusplus
 }
 #endif
