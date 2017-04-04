@@ -48,7 +48,6 @@
 //#define LOOP_INTERVAL   (100)   /*!< test interval for timer 0 */
 #define MAX_MOTORS 2 // Max number of motors allowed to be controlled.
 
-#define MAX_ACCEL 8
 stepper_motor_device_t *motor_devices[MAX_MOTORS] = { NULL };
 
 uint8_t num_devices = 0;

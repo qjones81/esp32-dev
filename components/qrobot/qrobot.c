@@ -85,13 +85,11 @@ float Ki_line_following = 0.0f;
 float Kd_line_following = 0.0f;
 //end save
 
-float current_heading_target = 0.0f;
 float current_heading = 0.0f;
 float prev_heading = 0.0f;
 float current_heading_error = 0.0f;
 float prev_heading_error = 0.0f;
 
-float current_speed_target = 0.0f;
 float current_speed = 0.0f;
 float prev_speed = 0.0f;
 float current_speed_error = 0.0f;
@@ -117,7 +115,7 @@ float max_target_tilt = 40.0f;
 float max_control_output = 500.0f;
 float control_output = 0.0f;
 float goto_goal_gain = 0.7f;
-uint16_t max_throttle = 250;
+uint16_t max_throttle = 300;
 uint16_t max_steering = 250;
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
@@ -140,11 +138,6 @@ float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
 uint8_t microsteps = 16;
 //end save
-
-// controller speeds
-float rc_speed_output = 0.0f;
-float navigation_speed_output = 0.0f;
-float navigation_steering_output = 0.0f;
 
 // robot pose
 float x_pos = 0.0f;
@@ -169,6 +162,7 @@ bool robot_shutdown = true;
 bool robot_stable = false;
 
 bool robot_in_navigation = false;
+
 // Socket for Debug
 socket_device_t *sock = NULL;
 static QueueHandle_t socket_debug_queue;
@@ -191,38 +185,104 @@ typedef struct {
 	char data[DEBUG_STACK_BUFFER_SIZE];
 } socket_event_t;
 
-extern void qrobot_send_debug(char * format, ...);
+typedef struct {
+	float x;
+	float y;
+	float theta;
+	bool is_last;
+	QueueHandle_t notify_queue;
+} waypoint_t;
+
+typedef struct {
+	bool enable; // Enable Flag
+	float v; // Linear Velocity
+	float w; // Angular Velocity
+} controller_output_t;
+
+typedef enum  {
+    OBSTACLE_AVOIDANCE_CONTROLLER,
+    GOTO_GOAL_CONTROLLER,
+    LINE_FOLLOWER_CONTROLLER,
+    RC_CONTROLLER,
+    CRUISE_CONTROLLER,
+    CONTROLLER_TYPE_MAX,
+} controller_type_t;
+
+controller_output_t controller_output_map[CONTROLLER_TYPE_MAX];
+
+extern void qrobot_send_debug(char *format, ...);
+extern void qrobot_down_and_back_task(void *ignore);
+extern void qrobot_navigation_task(void *ignore);
+
+controller_output_t qrobot_get_active_controller_output()
+{
+	for(int i = 0; i < CONTROLLER_TYPE_MAX; i++)
+	{
+		if(controller_output_map[i].enable)
+		{
+			return controller_output_map[i];
+		}
+	}
+	controller_output_t default_output;
+	default_output.v = 0;
+	default_output.w = 0;
+	return default_output; // default zero output
+}
 
 void qrobot_navigation_task(void *ignore)
 {
     ESP_LOGD(tag, ">> qrobot_navigation_task");
+
     uint32_t settle_time = 0;
     uint32_t last_time = 0;
 
-    while(1) {
-    	float x = current_goal_x - x_pos;
-    	float y = current_goal_y - y_pos;
-    	float target_distance = sqrt((x*x)+(y*y));
-    	float theta_d = atan2((current_goal_y - y_pos),(current_goal_x - x_pos));
-
-    	navigation_speed_output = goto_goal_gain;
-    	if(target_distance <= 0.3) {
-			settle_time += (millis() - last_time);
-			if (settle_time >= 100) {
-				qrobot_send_debug("Arrived: %f\n", target_distance);
-				navigation_speed_output = 0.0f;
-				navigation_steering_output = 0.0f;
-				break;
+    bool in_navigation = false;
+	waypoint_t goal_waypoint;
+	while (1) {
+		if (navigation_waypoint_queue != NULL) {
+			if (xQueueReceive(navigation_waypoint_queue, &(goal_waypoint),
+					(TickType_t ) 0)) {
+				ESP_LOGI(tag, "Got new waypoint: X = %f, Y = %f", goal_waypoint.x, goal_waypoint.y);
+				//qrobot_send_debug("Got new waypoint: X = %f, Y = %f", goal_waypoint.x, goal_waypoint.y);
+				controller_output_map[GOTO_GOAL_CONTROLLER].enable = true;
+				controller_output_map[GOTO_GOAL_CONTROLLER].v = goto_goal_gain;
+				in_navigation = true;
 			}
-		} else {
-			settle_time = 0;
 		}
 
-    	heading_pid.set_point = theta_d;
-    	heading_pid.input = theta;
+		if (in_navigation) {
+			//qrobot_send_debug("Navigating.\n");
+			float x = goal_waypoint.x - x_pos;
+			float y = goal_waypoint.y - y_pos;
+			float target_distance = sqrt((x * x) + (y * y));
+			float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
 
-    	qrobot_send_debug("Arrived: %f/%f\n", theta_d, theta);
-    	navigation_steering_output = pid_compute_angle(&heading_pid);
+			if (target_distance <= 0.2) {
+				settle_time += (millis() - last_time);
+				if (settle_time >= 100) {
+					qrobot_send_debug("Arrived: %f\n", target_distance);
+					if (goal_waypoint.is_last) {
+						controller_output_map[GOTO_GOAL_CONTROLLER].enable = false;
+						controller_output_map[GOTO_GOAL_CONTROLLER].v = 0.0f;
+						controller_output_map[GOTO_GOAL_CONTROLLER].w = 0.0f;
+					}
+					// Notify calling task we are there
+					if(goal_waypoint.notify_queue != NULL)
+					{
+						uint8_t send;
+						xQueueSendToFront(goal_waypoint.notify_queue, &send, (TickType_t ) 100 / portTICK_PERIOD_MS );
+					}
+					in_navigation = false;
+				}
+			} else {
+				settle_time = 0;
+			}
+
+			heading_pid.set_point = theta_d;
+			heading_pid.input = theta;
+
+			controller_output_map[GOTO_GOAL_CONTROLLER].w = pid_compute_angle(&heading_pid);
+		}
     	last_time = millis();
     	vTaskDelay(50 / portTICK_PERIOD_MS);
     }
@@ -280,6 +340,65 @@ void qrobot_navigation_task(void *ignore)
 	vTaskDelete(NULL);
 }
 
+void qrobot_down_and_back_task(void *ignore)
+{
+    ESP_LOGD(tag, ">> qrobot_down_and_back_task");
+
+
+    ESP_LOGD(tag, ">> Got Handle");
+
+    // Make a notify queue
+    QueueHandle_t queue = xQueueCreate(1, sizeof(waypoint_t));
+
+    waypoint_t waypoint_list[2];
+
+    waypoint_list[0].x = (6.0f * .3048); // 6 ft...
+    waypoint_list[0].y = 0;
+    waypoint_list[0].theta = 0;
+    waypoint_list[0].is_last = false;
+    waypoint_list[0].notify_queue = queue;
+
+    waypoint_list[1].x = .1f;
+    waypoint_list[1].y = 0;
+    waypoint_list[1].theta = 0;
+    waypoint_list[1].is_last = true;
+    waypoint_list[1].notify_queue = queue;
+
+
+    uint32_t start_time;
+    uint8_t waypoint_index = 0;
+    uint8_t waypoint_count = 2;
+	uint8_t recv;
+	bool waypoint_completed = true; // Already at 1st.  Technically.
+
+	start_time = millis();
+	while(1)
+	{
+		if(waypoint_completed) {
+			waypoint_completed = false;
+			// Send waypoint
+			xQueueSendToFront(navigation_waypoint_queue, &waypoint_list[waypoint_index], (TickType_t ) 100 / portTICK_PERIOD_MS );
+
+			qrobot_send_debug("Sending Waypoint!");
+		}
+
+		// Wait for completion
+		if (xQueueReceive(waypoint_list[waypoint_index].notify_queue, &(recv), (TickType_t ) 100 / portTICK_PERIOD_MS)) {
+			qrobot_send_debug("Completed Waypoint!");
+			waypoint_completed = true;
+			waypoint_index++;
+		}
+
+		if(waypoint_index >= waypoint_count) {
+			break;
+		}
+		vTaskDelay(20 / portTICK_PERIOD_MS);
+	}
+	uint32_t finish_time = millis();
+	qrobot_send_debug("Completion Time: %d (s)", (finish_time - start_time));
+	qrobot_send_debug("Started: %d and Finished: %d",finish_time, start_time);
+	vTaskDelete(NULL);
+}
 #if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
 void qrobot_control_debug_service(void *ignore)
 {
@@ -312,29 +431,24 @@ void qrobot_control_debug_service(void *ignore)
     }
     ESP_LOGI(tag, "Control and debug service running on port: %d", CONFIG_QROBOT_DEBUG_PORT);
     int total = 2048; // 2 KB buffer
-    //char *data = malloc(total);
     char data[2048];
     char params[10][20]; // 10 Max
     while (1) { // Listen for a new client connection.
 
         socklen_t client_address_length = sizeof(client_address);
-        int client_sock = accept(sock, (struct sockaddr *) &client_address,
-                &client_address_length);
+        int client_sock = accept(sock, (struct sockaddr *) &client_address, &client_address_length);
         if (client_sock < 0) {
             ESP_LOGE(tag, "ERROR:  Unable to accept client connection:  accept(): %s", strerror(errno));
             goto END;
         }
-
         // We now have a new client ...
         ESP_LOGI(tag, "Got new connection from client.");
 
-       // int total = 2 * 1024; // 2 KB buffer
         int size_used = 0;
         bzero(data, sizeof(data));
         // Loop reading data.
         while (1) {
-            ssize_t size_read = recv(client_sock, data + size_used,
-                    total - size_used, 0);
+            ssize_t size_read = recv(client_sock, data + size_used, total - size_used, 0);
             if (size_read < 0) {
                 ESP_LOGE(tag, "recv: %d %s", size_read, strerror(errno));
                 goto END;
@@ -346,21 +460,17 @@ void qrobot_control_debug_service(void *ignore)
         }
 
         // Finished reading data.
-        ESP_LOGD(tag, "Data read (size: %d) was: %.*s", size_used, size_used,
-                data);
+        ESP_LOGD(tag, "Data read (size: %d) was: %.*s", size_used, size_used, data);
 
 		// Check for commands
 		char* token = strtok(data, " ");
-		if(token)
-		{
-			if(!strncmp(data, "RESET",5))
-			{
+		if(token) {
+			if(!strncmp(data, "RESET",5)) {
 				current_goal_x = current_goal_y = current_goal_theta = 0;
 				x_pos = y_pos = theta = 0;
 				robot_in_navigation = false;
 			}
-			else if(!strncmp(data, "GOAL_GAIN",9))
-			{
+			else if(!strncmp(data, "GOAL_GAIN",9)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -371,15 +481,13 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 1) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					goto_goal_gain = atof(params[0]);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-
-			else if(!strncmp(data, "GOAL",4))
-			{
+			else if(!strncmp(data, "GOAL",4)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -390,22 +498,29 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 3) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
-					current_goal_x = atof(params[0]);
-					current_goal_y = atof(params[1]);
-					current_goal_theta = atof(params[2]);
-					robot_in_navigation = true;
-
+					waypoint_t new_goal;
+					new_goal.x = atof(params[0]);
+					new_goal.y = atof(params[1]);
+					new_goal.theta = atof(params[2]);
+					xQueueSendToFront(navigation_waypoint_queue, &new_goal, (TickType_t ) 100 / portTICK_PERIOD_MS );
+					send(client_sock, "OK\n", 3, 0);
+					//current_goal_x = atof(params[0]);
+					//current_goal_y = atof(params[1]);
+					//current_goal_theta = atof(params[2]);
+					//robot_in_navigation = true;
 
 			    	//ESP_LOGI(tag, "Theta_D = %f", theta_d * RADS_TO_DEGS);
 					// Start navigation task
-					xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
+				//	xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-			else if(!strncmp(data, "PID_SPEED",9))
-			{
+			else if(!strncmp(data, "DANDB",5)) {
+				// Start task
+				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,4, NULL);
+			}
+			else if(!strncmp(data, "PID_SPEED",9)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -416,7 +531,7 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 3) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					goto_goal_pid.k_p = atof(params[0]);
 					goto_goal_pid.k_i = atof(params[1]);
 					goto_goal_pid.k_d = atof(params[2]);
@@ -424,8 +539,7 @@ void qrobot_control_debug_service(void *ignore)
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-			else if(!strncmp(data, "PID_HEADING",11))
-			{
+			else if(!strncmp(data, "PID_HEADING",11)) {
 				printf("HEADING PID TOKEN:\n");
 				token = strtok(NULL, " ");
 				int counter = 0;
@@ -436,7 +550,7 @@ void qrobot_control_debug_service(void *ignore)
 					counter++;
 				}
 				if(counter == 3) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					heading_pid.k_p = atof(params[0]);
 					heading_pid.k_i = atof(params[1]);
 					heading_pid.k_d = atof(params[2]);
@@ -445,8 +559,7 @@ void qrobot_control_debug_service(void *ignore)
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-			else if(!strncmp(data, "ACCEL",5))
-			{
+			else if(!strncmp(data, "ACCEL",5)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -457,14 +570,13 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 1) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					max_motor_accel = atof(params[0]);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-			else if(!strncmp(data, "DECCEL",6))
-			{
+			else if(!strncmp(data, "DECCEL",6)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -475,14 +587,13 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 1) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					max_motor_deccel = atof(params[0]);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
-			else if(!strncmp(data, "THROTTLE_MAX",12))
-			{
+			else if(!strncmp(data, "THROTTLE_MAX",12)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -493,7 +604,7 @@ void qrobot_control_debug_service(void *ignore)
 				}
 
 				if(counter == 1) {
-					int sent_bytes = send(client_sock, "OK\n", 3, 0);
+					send(client_sock, "OK\n", 3, 0);
 					max_throttle = atof(params[0]);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
@@ -586,16 +697,12 @@ float qrobot_speed_PID_control(float dt, float input, float setPoint)
 
 float qrobot_limit_acceleration(float v, float v0, float max_accel, float max_deccel, float dt)
 {
-	const float tmp = v;
-
 	const float dv_min = -max_deccel * dt;
 	const float dv_max = max_accel * dt;
 
 	const float dv = constrain(v - v0, dv_min, dv_max);
 
 	return v0 + dv;
-
-	//return tmp != 0.0 ? v / tmp : 1.0;
 }
 
 void qrobot_controller_task(void *ignore)
@@ -691,7 +798,7 @@ void qrobot_controller_task(void *ignore)
 			vTaskDelay(100 / portTICK_PERIOD_MS);
 			continue;
 		}
-		else if(!robot_stable && (!equal_f(current_speed_target, 0, 0.01) || !equal_f(steering_input, 0, 0.01))) {
+		else if(!robot_stable && controller_output_map[RC_CONTROLLER].enable) { // If throttle input and not stable don't allow to stand
 			last_update = millis();
 			robot_stable = false;
 			stable_time = 0;
@@ -716,14 +823,10 @@ void qrobot_controller_task(void *ignore)
 
 		angular_velocity = (current_tilt - prev_tilt) * 90.0; // 90 is an empirical extracted factor to adjust for real units
 		estimated_speed = -robot_speed_old - angular_velocity; // We use robot_speed(t-1) or (t-2) to compensate the delay
-		estimated_speed_filtered = estimated_speed_filtered * 0.95
-				+ estimated_speed * 0.05; // low pass filter on estimated speed
+		estimated_speed_filtered = estimated_speed_filtered * 0.95 + estimated_speed * 0.05; // low pass filter on estimated speed
 
-				// SPEED CONTROL: This is a PI controller.
-				//    input:user throttle, variable: estimated robot speed, output: target robot angle to get the desired speed
-
-		throttle = (navigation_speed_output) * max_throttle;
-		steering = (navigation_steering_output) * max_steering;
+		throttle = qrobot_get_active_controller_output().v * max_throttle;
+		steering = qrobot_get_active_controller_output().w * max_steering;
 
 		target_tilt = qrobot_speed_PID_control(dt_s, estimated_speed_filtered, -throttle);
 		target_tilt = constrain(target_tilt, -max_target_tilt, max_target_tilt); // limited output
@@ -856,50 +959,43 @@ void qrobot_odometry_task(void *ignore)
     vTaskDelete(NULL);
 }
 
-
-void ar6115e_input_handler(pulse_event_t event)
+void qrobot_rc_input_handler(pulse_event_t event)
 {
     // Aileron Left = 2000, Right = 1000
     // Throttle Down = 1000, Up = 2000
 
+	static bool throttle_enable = false;
+	static bool steering_enable = false;
 	switch (event.channel) {
 		case THROTTLE:
 			if (abs(event.pulse_width - 1500) < throttle_dead_zone) { // Handle Dead Zones...
-				current_speed_target = 0;
+				controller_output_map[RC_CONTROLLER].v = 0;
+				throttle_enable = false;
 			} else if (event.pulse_width > 1500) {
-				current_speed_target = map_f(event.pulse_width, 1500 + throttle_dead_zone, 1900, 0.0f, 1.0f);
+				controller_output_map[RC_CONTROLLER].v = map_f(event.pulse_width, 1500 + throttle_dead_zone, 1900, 0.0f, 1.0f);
+				throttle_enable = true;
 			} else {
-				current_speed_target = map_f(event.pulse_width, 1100, 1500 - throttle_dead_zone, -1.0f, 0.0f);
+				controller_output_map[RC_CONTROLLER].v = map_f(event.pulse_width, 1100, 1500 - throttle_dead_zone, -1.0f, 0.0f);
+				throttle_enable = true;
 			}
 			break;
 		case AILERON:
 			if (abs(event.pulse_width - 1500) < steering_dead_zone) { // Handle Dead Zones...
-				steering_input = 0;
+				controller_output_map[RC_CONTROLLER].w = 0;
+				steering_enable = false;
 			} else if (event.pulse_width > 1500) {
-				steering_input = map_f(event.pulse_width, 1900, 1500 + steering_dead_zone, -1.0f, 0.0f);
+				controller_output_map[RC_CONTROLLER].w = map_f(event.pulse_width, 1900, 1500 + steering_dead_zone, -1.0f, 0.0f);
+				steering_enable = true;
 			}
 			else {
-				steering_input = map_f(event.pulse_width, 1500 - steering_dead_zone, 1100, 0.0f, 1.0f);
+				controller_output_map[RC_CONTROLLER].w = map_f(event.pulse_width, 1500 - steering_dead_zone, 1100, 0.0f, 1.0f);
+				steering_enable = true;
 			}
-			//ESP_LOGI(tag, "Steering: %d / %f", event.pulse_width, steering_input);
 			break;
 		default:
 			break;
     }
-//	float throttle = (current_speed_target) * max_throttle;
-//	float steering = (steering_input) * max_steering;
-//
-//	float motor_1_speed = throttle - steering;
-//	float motor_2_speed = throttle + steering;
-//
-//	motor_1_speed = constrain(motor_1_speed, -max_control_output,
-//			max_control_output);
-//	motor_2_speed = constrain(motor_2_speed, -max_control_output,
-//			max_control_output);
-//
-//	stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 46);
-//	stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 46);
-
+	controller_output_map[RC_CONTROLLER].enable = throttle_enable | steering_enable;
 }
 
 void qrobot_init_adns()
@@ -920,15 +1016,17 @@ void qrobot_init_adns()
 
     adns_3080_init(adns_sensor);
 }
+
 void qrobot_init_ar6115e()
 {
 	ESP_LOGI(tag, "Initializing AR6115e RC Receiver.\n");
-    ar6115e_init(ar6115e_input_handler);
+    ar6115e_init(qrobot_rc_input_handler);
     ar6115e_add_channel(THROTTLE, GPIO_NUM_14);
     ar6115e_add_channel(AILERON, GPIO_NUM_27);
     ar6115e_start();
     ESP_LOGI(tag, "AR6115e started.\n");
 }
+
 void qrobot_init_mpu9250()
 {
     // Init i2c
@@ -944,6 +1042,7 @@ void qrobot_init_mpu9250()
         return;
     }
 }
+
 void qrobot_init_amis30543_drivers()
 {
     // TODO: Update CS pins to new board
@@ -962,7 +1061,7 @@ void qrobot_init_amis30543_drivers()
     ESP_LOGI(tag, "Initializing AMIS-30543 (1)...\n");
     amis_30543_init(amis_motor_1); // Init
     amis_30543_reset(amis_motor_1); // Reset
-    amis_30543_set_current(amis_motor_1, 1500); // Set current limit to 1000ma
+    amis_30543_set_current(amis_motor_1, 2000); // Set current limit to 1000ma
     amis_30543_set_step_mode(amis_motor_1, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_left, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_1, true); // Enable motor output
@@ -985,7 +1084,7 @@ void qrobot_init_amis30543_drivers()
     ESP_LOGI(tag, "Initializing AMIS-30543 (2)...\n");
     amis_30543_init(amis_motor_2); // Init
     amis_30543_reset(amis_motor_2); // Reset
-    amis_30543_set_current(amis_motor_2, 1500); // Set current limit to 1000ma
+    amis_30543_set_current(amis_motor_2, 2000); // Set current limit to 1000ma
     amis_30543_set_step_mode(amis_motor_2, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_right, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_2, true); // Enable motor output
@@ -1072,6 +1171,9 @@ void qrobot_init()
 	#endif
 	delay_ms(500);
 
+	// Setup queues
+	navigation_waypoint_queue = xQueueCreate(1, sizeof(waypoint_t));
+
 	// Setup Robot Parameters
 	steps_per_rev = microsteps * 200;
 	wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_radius_1 * 2); // steps per m (Right)
@@ -1107,6 +1209,7 @@ void qrobot_init()
 	robot_in_navigation = false;
 
 }
+
 void qrobot_start()
 {
    robot_shutdown = false;
@@ -1118,7 +1221,8 @@ void qrobot_start()
    // Start odometry task
    xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 5, NULL);
 
-
+   // Start navigation task
+   xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
 }
 
 void qrobot_stop()
