@@ -89,6 +89,7 @@ float current_heading = 0.0f;
 float prev_heading = 0.0f;
 float current_heading_error = 0.0f;
 float prev_heading_error = 0.0f;
+float imu_heading_bias = 0.0f;
 
 float current_speed = 0.0f;
 float prev_speed = 0.0f;
@@ -115,8 +116,8 @@ float max_target_tilt = 40.0f;
 float max_control_output = 500.0f;
 float control_output = 0.0f;
 float goto_goal_gain = 0.7f;
-uint16_t max_throttle = 300;
-uint16_t max_steering = 250;
+uint16_t max_throttle = 200;
+uint16_t max_steering = 50;
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
@@ -145,9 +146,6 @@ float y_pos = 0.0f;
 float theta = 0.0f;
 
 float total_meters = 0.0f;
-float current_goal_x = 0.0f;
-float current_goal_y = 0.0f;
-float current_goal_theta = 0.0f;
 
 float pid_error_sum = 0.0f;
 float pid_balance_error_sum = 0.0f;
@@ -242,10 +240,13 @@ void qrobot_navigation_task(void *ignore)
 		if (navigation_waypoint_queue != NULL) {
 			if (xQueueReceive(navigation_waypoint_queue, &(goal_waypoint),
 					(TickType_t ) 0)) {
-				ESP_LOGI(tag, "Got new waypoint: X = %f, Y = %f", goal_waypoint.x, goal_waypoint.y);
-				//qrobot_send_debug("Got new waypoint: X = %f, Y = %f", goal_waypoint.x, goal_waypoint.y);
+				float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
+				ESP_LOGI(tag, "Got new waypoint: X = %f, Y = %f, Theta_d: %f", goal_waypoint.x, goal_waypoint.y, theta_d);
+
+
+				qrobot_send_debug("Got new waypoint: X = %f, Y = %f, Theta: %f", goal_waypoint.x, goal_waypoint.y, theta_d);
 				controller_output_map[GOTO_GOAL_CONTROLLER].enable = true;
-				controller_output_map[GOTO_GOAL_CONTROLLER].v = goto_goal_gain;
+				//controller_output_map[GOTO_GOAL_CONTROLLER].v = goto_goal_gain;
 				in_navigation = true;
 			}
 		}
@@ -256,10 +257,10 @@ void qrobot_navigation_task(void *ignore)
 			float y = goal_waypoint.y - y_pos;
 			float target_distance = sqrt((x * x) + (y * y));
 			float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
-
 			if (target_distance <= 0.2) {
+			//if (fabs(theta_delta) <= 0.01) {
 				settle_time += (millis() - last_time);
-				if (settle_time >= 100) {
+				if (settle_time >= 10) {
 					qrobot_send_debug("Arrived: %f\n", target_distance);
 					if (goal_waypoint.is_last) {
 						controller_output_map[GOTO_GOAL_CONTROLLER].enable = false;
@@ -278,10 +279,19 @@ void qrobot_navigation_task(void *ignore)
 				settle_time = 0;
 			}
 
+			goto_goal_pid.set_point = 0;
+			goto_goal_pid.input = target_distance;
+			goto_goal_pid.output_max = goto_goal_gain;
+			goto_goal_pid.output_min = -goto_goal_gain;
+			controller_output_map[GOTO_GOAL_CONTROLLER].v = -pid_compute(&goto_goal_pid);
+
+
 			heading_pid.set_point = theta_d;
 			heading_pid.input = theta;
 
-			controller_output_map[GOTO_GOAL_CONTROLLER].w = pid_compute_angle(&heading_pid);
+			controller_output_map[GOTO_GOAL_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+
+
 		}
     	last_time = millis();
     	vTaskDelay(50 / portTICK_PERIOD_MS);
@@ -312,6 +322,7 @@ void qrobot_navigation_task(void *ignore)
 //		last_time = millis();
 //		vTaskDelay(50 / portTICK_PERIOD_MS);
 //	}
+
 
     //ESP_LOGI(tag, "Theta %f", current_goal_theta);
 //    while (1) {
@@ -350,7 +361,7 @@ void qrobot_down_and_back_task(void *ignore)
     // Make a notify queue
     QueueHandle_t queue = xQueueCreate(1, sizeof(waypoint_t));
 
-    waypoint_t waypoint_list[2];
+    waypoint_t waypoint_list[3];
 
     waypoint_list[0].x = (6.0f * .3048); // 6 ft...
     waypoint_list[0].y = 0;
@@ -358,11 +369,12 @@ void qrobot_down_and_back_task(void *ignore)
     waypoint_list[0].is_last = false;
     waypoint_list[0].notify_queue = queue;
 
-    waypoint_list[1].x = .1f;
-    waypoint_list[1].y = 0;
+    waypoint_list[1].x = 0.f;
+    waypoint_list[1].y = -0.005f;
     waypoint_list[1].theta = 0;
     waypoint_list[1].is_last = true;
     waypoint_list[1].notify_queue = queue;
+
 
 
     uint32_t start_time;
@@ -466,7 +478,6 @@ void qrobot_control_debug_service(void *ignore)
 		char* token = strtok(data, " ");
 		if(token) {
 			if(!strncmp(data, "RESET",5)) {
-				current_goal_x = current_goal_y = current_goal_theta = 0;
 				x_pos = y_pos = theta = 0;
 				robot_in_navigation = false;
 			}
@@ -502,6 +513,7 @@ void qrobot_control_debug_service(void *ignore)
 					new_goal.x = atof(params[0]);
 					new_goal.y = atof(params[1]);
 					new_goal.theta = atof(params[2]);
+					new_goal.is_last = true;
 					xQueueSendToFront(navigation_waypoint_queue, &new_goal, (TickType_t ) 100 / portTICK_PERIOD_MS );
 					send(client_sock, "OK\n", 3, 0);
 					//current_goal_x = atof(params[0]);
@@ -605,7 +617,7 @@ void qrobot_control_debug_service(void *ignore)
 
 				if(counter == 1) {
 					send(client_sock, "OK\n", 3, 0);
-					max_throttle = atof(params[0]);
+					max_steering = atof(params[0]);
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
@@ -728,6 +740,29 @@ void qrobot_controller_task(void *ignore)
 	float angular_velocity = 0.0f;
 	float estimated_speed = 0.0f;
 
+//	while (1) {
+//		throttle = qrobot_get_active_controller_output().v * max_throttle;
+//		steering = -qrobot_get_active_controller_output().w * max_steering;
+//
+//		motor_1_speed = throttle + steering;
+//		motor_2_speed = throttle - steering;
+//
+//		stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 20);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 20);
+//
+//		//ESP_LOGI(tag, "Set Speed: %d", (int)(motor_1_speed));
+//		vTaskDelay(5 / portTICK_PERIOD_MS);
+//	}
+//
+//
+//
+//
+//
+//
+//
+//
+
+
 
 	//vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -814,7 +849,7 @@ void qrobot_controller_task(void *ignore)
 		dt = (now - last_update); // in ms
 		dt_s = dt * 0.001f; // in s
 		prev_tilt = current_tilt;
-		current_tilt = mpu_9250_get_phi() * 1.1111111; //Degrees to GRAD
+		current_tilt = mpu_9250_get_phi() * 1.1111111; //Degrees to GRAD, Roll axis
 
 		// We calculate the estimated robot speed:
 		// Estimated_Speed = angular_velocity_of_stepper_motors(combined) - angular_velocity_of_robot(angle measured by IMU)
@@ -837,8 +872,8 @@ void qrobot_controller_task(void *ignore)
 		motor_1_speed_old = motor_1_speed;
 		motor_2_speed_old = motor_2_speed;
 
-		motor_1_speed = control_output - steering;
-		motor_2_speed = control_output + steering;
+		motor_1_speed = control_output + steering;
+		motor_2_speed = control_output - steering;
 
 		motor_1_speed = constrain(motor_1_speed, -max_control_output, max_control_output);
 		motor_2_speed = constrain(motor_2_speed, -max_control_output, max_control_output);
@@ -899,8 +934,8 @@ void qrobot_controller_task(void *ignore)
 
 void qrobot_odometry_task(void *ignore)
 {
-	// Right Wheel = Motor 1
-	// Left Wheel = Motor 2
+	// Right Wheel = Motor 2
+	// Left Wheel = Motor 1
 
     ESP_LOGD(tag, ">> qrobot_odometry_task");
     int32_t wheel_1_step_prev = 0;
@@ -930,7 +965,8 @@ void qrobot_odometry_task(void *ignore)
 		total_meters += delta_m; // Update total odometry
 
 		// Update Theta
-		theta += (wheel_2_distance - wheel_1_distance) / wheel_base; // CW Positive
+		//theta = mpu_9250_get_yaw() - imu_heading_bias;
+		theta += (wheel_2_distance - wheel_1_distance) / wheel_base; // CCW Positive
 
 		// Clip to +/- 360 Degrees
 		theta -= (float)((int)(theta/TWO_PI))*TWO_PI;
@@ -947,10 +983,12 @@ void qrobot_odometry_task(void *ignore)
 		x_pos += (delta_m * (cos(theta)));
 		y_pos += (delta_m * (sin(theta)));
 
+		//ESP_LOGI(tag, "Pitch: %f, Roll: %f, Yaw: %f", mpu_9250_get_pitch(), mpu_9250_get_roll(), mpu_9250_get_yaw());
+
     	if(loop_count >= 100)
     	{
-			ESP_LOGI(tag, "Pose: X: %f, Y: %f, Theta: %f", x_pos, y_pos, theta);
-    		qrobot_send_debug("Pose: X: %f, Y: %f, Theta: %f\n",  x_pos, y_pos, theta);
+			//ESP_LOGI(tag, "Pose: X: %f, Y: %f, Theta: %f/%f", x_pos, y_pos, theta, mpu_9250_get_yaw());
+    		qrobot_send_debug("Pose: X: %f, Y: %f, Theta: %f/%f\n",  x_pos, y_pos, theta, mpu_9250_get_yaw());
 			loop_count = 0;
     	}
     	loop_count++;
@@ -1050,7 +1088,7 @@ void qrobot_init_amis30543_drivers()
     amis_motor_1 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
 
-    // Right
+    // Left
     // 10Mhz, Mode 0
     ESP_LOGI(tag, "Adding AMIS-30543 (1) to SPI Bus...\n");
     ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_5, 1000000, 0, &amis_motor_1->spi_device)); // TODO: Pass In Values
@@ -1061,7 +1099,7 @@ void qrobot_init_amis30543_drivers()
     ESP_LOGI(tag, "Initializing AMIS-30543 (1)...\n");
     amis_30543_init(amis_motor_1); // Init
     amis_30543_reset(amis_motor_1); // Reset
-    amis_30543_set_current(amis_motor_1, 2000); // Set current limit to 1000ma
+    amis_30543_set_current(amis_motor_1, 1000); // Set current limit to 1000ma
     amis_30543_set_step_mode(amis_motor_1, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_left, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_1, true); // Enable motor output
@@ -1070,7 +1108,7 @@ void qrobot_init_amis30543_drivers()
     bool verified = amis_30543_verify(amis_motor_1);
     ESP_LOGI(tag, "AMIS-30543 Initialized (1) %d.\n", verified);
 
-    // Left
+    // Right
     amis_motor_2 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
 
@@ -1084,7 +1122,7 @@ void qrobot_init_amis30543_drivers()
     ESP_LOGI(tag, "Initializing AMIS-30543 (2)...\n");
     amis_30543_init(amis_motor_2); // Init
     amis_30543_reset(amis_motor_2); // Reset
-    amis_30543_set_current(amis_motor_2, 2000); // Set current limit to 1000ma
+    amis_30543_set_current(amis_motor_2, 1000); // Set current limit to 1000ma
     amis_30543_set_step_mode(amis_motor_2, MicroStep16); // Set microstepping to 1/16
     //amis_30543_pwm_frequency_double(amis_right, true); // 45.6 khz
     amis_30543_enable_driver(amis_motor_2, true); // Enable motor output
@@ -1096,12 +1134,12 @@ void qrobot_init_amis30543_drivers()
 
 void qrobot_init_stepper_motors()
 {
-	// Motor 1 = Right, Motor 2 = Left
+	// Motor 1 = Left, Motor 2 = Right
     stepper_motor_device_config_t motor_1_cfg = { .step_pin = GPIO_NUM_17,
-            .dir_pin = GPIO_NUM_16, .step_hold_delay = 10, .dir_reverse = true };
+            .dir_pin = GPIO_NUM_16, .step_hold_delay = 10, .dir_reverse = false };
 
     stepper_motor_device_config_t motor_2_cfg = { .step_pin = GPIO_NUM_15,
-            .dir_pin = GPIO_NUM_2, .step_hold_delay = 10, .dir_reverse = false };
+            .dir_pin = GPIO_NUM_2, .step_hold_delay = 10, .dir_reverse = true };
 
     stepper_control_add_device(STEPPER_MOTOR_1, motor_1_cfg);
     stepper_control_add_device(STEPPER_MOTOR_2, motor_2_cfg);
@@ -1139,7 +1177,7 @@ void qrobot_init()
 	qrobot_init_ar6115e(); // RC input
 
 	// Gyro Calibration delay
-	delay_ms(max(1, 8000 - (millis() - gyro_init_begin)));
+	delay_ms(max(1, 10000 - (millis() - gyro_init_begin)));
 
 	// Pulse motors for ready indication
 	for (uint8_t k = 0; k < 5; k++) {
@@ -1179,6 +1217,10 @@ void qrobot_init()
 	wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_radius_1 * 2); // steps per m (Right)
 	wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_radius_2 * 2); // steps per m (Left)
 
+	// Reset Headings...
+	//delay_ms(5000);
+	imu_heading_bias = mpu_9250_get_yaw();
+
 	// Reset Odometers...
 	stepper_control_reset_steps(STEPPER_MOTOR_1);
 	stepper_control_reset_steps(STEPPER_MOTOR_2);
@@ -1196,7 +1238,7 @@ void qrobot_init()
 
 	memset(&heading_pid, 0, sizeof(pid_device_control_t));
 
-	heading_pid.k_p = 0.1f;
+	heading_pid.k_p = 0.5f;
 	heading_pid.k_i = 0.0f;
 	heading_pid.k_d = 0.0f;
 	heading_pid.integral_windup_max = 1000;

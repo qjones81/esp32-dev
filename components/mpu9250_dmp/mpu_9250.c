@@ -315,19 +315,24 @@ void mpu_9250_compute_euler_angles(bool degrees)
     //ESP_LOGI(tag, "Quat: %0.2f, %0.2f, %0.2f, %0.2f", dqw, dqx, dqy, dqz);
 
     float ysqr = dqy * dqy;
-    float t0 = -2.0f * (ysqr + dqz * dqz) + 1.0f;
-    float t1 = +2.0f * (dqx * dqy - dqw * dqz);
-    float t2 = -2.0f * (dqx * dqz + dqw * dqy);
-    float t3 = +2.0f * (dqy * dqz - dqw * dqx);
-    float t4 = -2.0f * (dqx * dqx + ysqr) + 1.0f;
+
+	// roll (x-axis rotation)
+    float t0 = +2.0 * (dqw * dqx + dqy * dqz);
+    float t1 = +1.0 - 2.0 * (dqx * dqx + ysqr);
+	roll = atan2(t0, t1);
+
+	// pitch (y-axis rotation)
+	float t2 = +2.0 * (dqw * dqy - dqz * dqx);
 
 	// Keep t2 within range of asin (-1, 1)
-    t2 = t2 > 1.0f ? 1.0f : t2;
-    t2 = t2 < -1.0f ? -1.0f : t2;
+	t2 = t2 > 1.0 ? 1.0 : t2;
+	t2 = t2 < -1.0 ? -1.0 : t2;
+	pitch = asin(t2);
 
-    pitch = asin(t2) * 2;
-    roll = atan2(t3, t4);
-    yaw = atan2(t1, t0);
+	// yaw (z-axis rotation)
+	float t3 = +2.0 * (dqw * dqz + dqx * dqy);
+	float t4 = +1.0 - 2.0 * (ysqr + dqz * dqz);
+	yaw = atan2(t3, t4);
 
     phi = (atan2(2 * (dqy * dqz + dqw * dqx), dqw * dqw - dqx * dqx - dqy * dqy + dqz * dqz));
 
@@ -339,8 +344,7 @@ void mpu_9250_compute_euler_angles(bool degrees)
 		phi *= (180.0 / PI);
 		if (pitch < 0) pitch = 360.0 + pitch;
 		if (roll < 0) roll = 360.0 + roll;
-		if (yaw < 0)
-			yaw = 360.0 + yaw;
+		if (yaw < 0) yaw = 360.0 + yaw;
 	}
 
 }
@@ -391,7 +395,7 @@ void mpu_9250_compute_heading(void)
     if (my == 0)
         heading = (mx < 0) ? 180.0 : 0;
     else
-        heading = atan2(mx, my);
+        heading = atan2(my, mx);
 
     if (heading > PI) heading -= (2 * PI);
     else if (heading < -PI) heading += (2 * PI);

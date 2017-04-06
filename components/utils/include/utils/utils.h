@@ -37,6 +37,15 @@
 #define RADS_TO_DEGS 57.2957795131f
 #endif
 
+#ifndef RADS_TO_GRAD
+#define RADS_TO_GRAD 57.2957795f
+#endif
+
+#ifndef GRAD_TO_RADS
+#define GRAD_TO_RADS 0.01745329251994329576923690768489f
+#endif
+
+
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
 extern uint32_t IRAM_ATTR micros();
