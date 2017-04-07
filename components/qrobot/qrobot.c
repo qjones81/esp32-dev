@@ -115,9 +115,9 @@ float max_target_tilt = 40.0f;
 
 float max_control_output = 500.0f;
 float control_output = 0.0f;
-float goto_goal_gain = 0.7f;
-uint16_t max_throttle = 200;
-uint16_t max_steering = 50;
+float goto_goal_gain = 1.0f;
+uint16_t max_throttle = 300; //200
+uint16_t max_steering = 250; // 50
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
@@ -532,6 +532,26 @@ void qrobot_control_debug_service(void *ignore)
 				// Start task
 				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,4, NULL);
 			}
+			else if(!strncmp(data, "PERF_PARAMS", 11)) {
+				token = strtok(NULL, " ");
+				int counter = 0;
+				while (token) {
+					strcpy(params[counter], token);
+					printf("token: %s\n", params[counter]);
+					token = strtok(NULL, " ");
+					counter++;
+				}
+
+				if(counter == 4) {
+					send(client_sock, "OK\n", 3, 0);
+					max_throttle = (uint16_t)atof(params[0]);
+					max_steering = (uint16_t)atof(params[1]);
+					max_linear_accel = atof(params[2]);
+					max_angular_accel = atof(params[3]);
+				} else {
+					send(client_sock, "INVALID\n", 8, 0);
+				}
+			}
 			else if(!strncmp(data, "PID_SPEED",9)) {
 				token = strtok(NULL, " ");
 				int counter = 0;
@@ -673,7 +693,7 @@ float qrobot_stability_PID_control(float dt, float input, float setpoint)
 
 	pid_balance_error_sum += error;
 
-	if(abs(pid_balance_error_sum) > 30000)
+	if(abs(pid_balance_error_sum) > 20000)
 	{
 		stable_time = 0;
 		control_output = 0;
@@ -864,6 +884,12 @@ void qrobot_controller_task(void *ignore)
 		steering = qrobot_get_active_controller_output().w * max_steering;
 
 		target_tilt = qrobot_speed_PID_control(dt_s, estimated_speed_filtered, -throttle);
+
+		//float tilt_change = (target_tilt - current_tilt) * dt_s;
+		//tilt_change = constrain(tilt_change, -1, 1); //  deg/s
+
+		//target_tilt  = current_tilt + (tilt_change / dt_s);
+
 		target_tilt = constrain(target_tilt, -max_target_tilt, max_target_tilt); // limited output
 
 		control_output += qrobot_stability_PID_control(dt, current_tilt, target_tilt);
