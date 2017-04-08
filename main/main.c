@@ -78,7 +78,7 @@ void task_adc_test(void *ignore) {
 		}
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	} // End loop forever
-
+//
 //    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
 //    adc_2_config_channel_atten(ADC2_CHANNEL_5,ADC_ATTEN_11db);//config channel0 attenuation
 //
@@ -178,11 +178,6 @@ void app_main(void)
 
 
     nvs_flash_init();
-
-    //delay(5000);
-
-    //   amis_30543_device_t amis_test;
-
 
     // Wifi Config
     wifi_config_t sta_config;
@@ -307,7 +302,7 @@ void app_main(void)
 
     //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
 
-   // xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
+    //xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 
