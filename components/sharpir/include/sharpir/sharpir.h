@@ -45,7 +45,7 @@ typedef enum  {
  */
 typedef struct {
 	sharp_ir_model_t type; // Model Type
-	adc2_channel_t sensor_pin;           // Sensor Input Pin
+	adc1_channel_t sensor_pin;           // Sensor Input Pin
     uint8_t num_samples; // How many samples to average
 } sharp_ir_device_t;
 

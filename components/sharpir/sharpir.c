@@ -33,8 +33,8 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
-//#include "driver/adc.h"
-#include "adc/adc.h"
+#include "driver/adc.h"
+//#include "adc/adc.h"
 #include "utils/utils.h"
 
 #include "sharpir.h"
@@ -44,8 +44,8 @@ static const char *tag = "sharp_ir";
 static float _previous_distance = 0.0;
 void sharp_ir_init(sharp_ir_device_t *device)
 {
-	adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
-	adc_2_config_channel_atten(device->sensor_pin, ADC_ATTEN_11db);//config channel attenuation
+	adc1_config_width(ADC_WIDTH_12Bit);//config adc2 width
+	adc1_config_channel_atten(device->sensor_pin, ADC_ATTEN_11db);//config channel attenuation
 }
 
 
@@ -53,7 +53,7 @@ int sharp_ir_get_distance_raw(sharp_ir_device_t *device)
 {
 	int raw_val = 0;
 	for (int i = 0; i < device->num_samples; i++) {
-		raw_val += adc_2_get_voltage(device->sensor_pin); //get the  val of channel
+		raw_val += adc1_get_voltage(device->sensor_pin); //get the  val of channel
 	}
 	return raw_val / device->num_samples;
 }
@@ -110,15 +110,9 @@ float sharp_ir_get_distance_cm_tol(sharp_ir_device_t *device)
 			_previous_distance = foo;
 			_sum = _sum + foo;
 			_p++;
-
 		}
-
-
 	}
 
-
 	float accurateDistance = _sum / _p;
-
 	return accurateDistance;
-
 }

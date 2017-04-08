@@ -48,7 +48,8 @@
 #include "pid/pid.h"
 #include "utils/utils.h"
 #include "wifi/wifi.h"
-#include "adc/adc.h"
+//#include "adc/adc.h"
+#include "driver/adc.h"
 #include "sharpir/sharpir.h"
 #include "sockets/socket_server.h"
 
@@ -360,12 +361,12 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
     // Init Sensors
     sharp_ir_device_t left_sensor;
     left_sensor.num_samples = 100;
-    left_sensor.sensor_pin = ADC2_CHANNEL_9;
+    left_sensor.sensor_pin = ADC1_CHANNEL_6;
     left_sensor.type = CM_10_80;
 
     sharp_ir_device_t right_sensor;
     right_sensor.num_samples = 100;
-    right_sensor.sensor_pin = ADC2_CHANNEL_5;
+    right_sensor.sensor_pin = ADC1_CHANNEL_7;
     right_sensor.type = CM_10_80;
 
     sharp_ir_init(&left_sensor);
@@ -1390,7 +1391,7 @@ void qrobot_start()
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
 
    // Start avoidance task
-  // xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
+   xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
 
 }
 

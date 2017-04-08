@@ -1,17 +1,63 @@
 
 menu "WiFi AP Configuration"
 
-# This is actually also handled in the ESP32 startup code, not only in FreeRTOS.
-config ESP32_WIFI_SSID
-    string "Target Wifi SSID"
-    default ""
-    help
-        WifI SSID as string.
+config WIFI_HOST_AP_MODE
+    bool "Use as Host AP"
+config WIFI_HOST_AP_SSID
+    string "SSID of access point" if WIFI_HOST_AP_MODE
+config WIFI_HOST_AP_PASSWORD
+    string "Password of access point" if WIFI_HOST_AP_MODE
+config WIFI_HOST_AP_CHANNEL
+    int "Channel" if WIFI_HOST_AP_MODE
+config WIFI_HOST_AP_MAX_CONNECTIONS
+    int "Maximum connections" if WIFI_HOST_AP_MODE
+    
+config WIFI_AP1
+    bool "Set access point 1" if !WIFI_HOST_AP_MODE
+config WIFI_AP1_SSID
+    string "SSID of access point 1" if WIFI_AP1
+config WIFI_AP1_PASSWORD
+    string "Password of access point 1" if WIFI_AP1
 
-config ESP32_WIFI_PASSWORD
-    string "Target Wifi password"
-    default ""
-    help
-        The password for the target Wifi SSID.
+config WIFI_AP2
+    bool "Set access point 2" if WIFI_AP1
+config WIFI_AP2_SSID
+    string "SSID of access point 1" if WIFI_AP2
+config WIFI_AP2_PASSWORD
+    string "Password of access point 1" if WIFI_AP2
+
+
+config WIFI_AP3
+    bool "Set access point 3" if WIFI_AP2
+config WIFI_AP3_SSID
+    string "SSID of access point 1" if WIFI_AP3
+config WIFI_AP3_PASSWORD
+    string "Password of access point 1" if WIFI_AP3
+
+
+config WIFI_AP4
+    bool "Set access point 4" if WIFI_AP3
+config WIFI_AP4_SSID
+    string "SSID of access point 1" if WIFI_AP4
+config WIFI_AP4_PASSWORD
+    string "Password of access point 1" if WIFI_AP4
+
+
+config WIFI_AP5
+    bool "Set access point 5" if WIFI_AP4
+config WIFI_AP5_SSID
+    string "SSID of access point 1" if WIFI_AP5
+config WIFI_AP5_PASSWORD
+    string "Password of access point 1" if WIFI_AP5
+
+config WIFI_AP_COUNT
+    int "Number of access points configured" if !WIFI_HOST_AP_MODE
+    range 0 5
+    default 5 if WIFI_AP5
+    default 4 if WIFI_AP4
+    default 3 if WIFI_AP3
+    default 2 if WIFI_AP2
+    default 1 if WIFI_AP1
+    default 0
 
 endmenu

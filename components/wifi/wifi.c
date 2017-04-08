@@ -105,7 +105,7 @@ void wifi_init_connect_ap(wifi_config_t sta_config)
 }
 
 
-void wifi_ap_task(void *ignore) {
+void wifi_init_start_ap(wifi_config_t ap_config) {
  //   nvs_flash_init();
     tcpip_adapter_init();
     ESP_ERROR_CHECK( esp_event_loop_init(wifi_event_handler, NULL) );
@@ -113,19 +113,8 @@ void wifi_ap_task(void *ignore) {
     ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
     ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_AP) );
-    wifi_config_t apConfig = {
-       .ap = {
-          .ssid="ESP32_TESTAP",
-          .ssid_len=0,
-          .password="",
-          .channel=0,
-          .authmode=WIFI_AUTH_OPEN,
-          .ssid_hidden=0,
-          .max_connection=4,
-          .beacon_interval=100
-       }
-    };
-    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_AP, &apConfig) );
+
+    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_AP, &ap_config) );
     ESP_ERROR_CHECK( esp_wifi_start() );
-    vTaskDelete(NULL);
+    //vTaskDelete(NULL);
 }

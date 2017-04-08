@@ -11,7 +11,7 @@
 #include "i2c/i2c.h"
 #include "spi/spi.h"
 #include "mpu9250_dmp/mpu_9250.h"
-#include "adc/adc.h"
+#include "driver/adc.h"
 #include "sharpir/sharpir.h"
 
 //#include "amis_30543/amis_30543.h"
@@ -41,159 +41,136 @@ extern void task_adns3080_reader_task(void *ignore);
 extern void task_imu_reader_task(void *ignore);
 
 //adns_3080_device_t adns_test_2;
-
-void task_adc_test(void *ignore) {
-    ESP_LOGD(tag, ">> task_adc");
-
-    sharp_ir_device_t left_sensor;
-    left_sensor.num_samples = 100;
-    left_sensor.sensor_pin = ADC2_CHANNEL_9;
-    left_sensor.type = CM_10_80;
-
-    sharp_ir_device_t right_sensor;
-    right_sensor.num_samples = 100;
-    right_sensor.sensor_pin = ADC2_CHANNEL_5;
-    right_sensor.type = CM_10_80;
-
-    sharp_ir_init(&left_sensor);
-    sharp_ir_init(&right_sensor);
-	while (1) {
-
-		float volts_l = sharp_ir_get_distance_volt(&left_sensor);
-		float cm_l =  sharp_ir_get_distance_cm(&left_sensor);
-
-		float volts_r = sharp_ir_get_distance_volt(&right_sensor);
-		float cm_r =  sharp_ir_get_distance_cm(&right_sensor);
-
-		if(cm_l >= 70 || cm_l <= 10.0f) {
-			ESP_LOGI(tag, "NO MEASUREMENT LEFT: %f", volts_l);
-		} else {
-			ESP_LOGI(tag, "Left Value: %0.2f/%0.2f", volts_l, cm_l);
-		}
-
-		if (cm_r >= 70 || cm_r <= 10.0f) {
-			ESP_LOGI(tag, "NO MEASUREMENT RIGHT: %f", volts_r);
-		} else {
-			ESP_LOGI(tag, "Right Value: %0.2f/%0.2f", volts_r, cm_r);
-		}
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-	} // End loop forever
 //
-//    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
-//    adc_2_config_channel_atten(ADC2_CHANNEL_5,ADC_ATTEN_11db);//config channel0 attenuation
+//void task_adc_test(void *ignore) {
+//    ESP_LOGD(tag, ">> task_adc");
 //
-//    adc_2_config_width(ADC_WIDTH_12Bit);//config adc2 width
-//    adc_2_config_channel_atten(ADC2_CHANNEL_9,ADC_ATTEN_11db);//config channel0 attenuation
+//         adc1_config_width(ADC_WIDTH_12Bit);//config adc2 width
+//         adc1_config_channel_atten(ADC1_CHANNEL_6,ADC_ATTEN_11db);//config channel0 attenuation
 //
+//        adc1_config_width(ADC_WIDTH_12Bit);//config adc2 width
+//         adc1_config_channel_atten(ADC1_CHANNEL_7,ADC_ATTEN_11db);//config channel0 attenuation
+//
+//
+//        while(1) {
+//
+//             int val=adc1_get_voltage(ADC1_CHANNEL_6);//get the  val of channel0
+//            int val2=adc1_get_voltage(ADC1_CHANNEL_7);//get the  val of channel0
+//            ESP_LOGI(tag, "Value: %d and %d", val, val2);
+//
+//            vTaskDelay(1000/portTICK_PERIOD_MS);
+//        } // End loop forever
+//
+//    vTaskDelete(NULL);
+//}
+//void task_servoSweep(void *ignore) {
+//    int bitSize         = 15;
+//    int minValue        = 500;  // micro seconds (uS)
+//    int maxValue        = 2500; // micro seconds (uS)
+//    int sweepDuration   = 1500; // milliseconds (ms)
+//    int duty            = (1<<bitSize) * minValue / 20000 ;
+//   // int direction       = 1; // 1 = up, -1 = down
+//    int valueChangeRate = 20; // msecs
+//
+//    ESP_LOGD(tag, ">> task_servo1");
+//    ledc_timer_config_t timer_conf;
+//    timer_conf.bit_num    = LEDC_TIMER_15_BIT;
+//    timer_conf.freq_hz    = 50;
+//    timer_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+//    timer_conf.timer_num  = LEDC_TIMER_0;
+//    ledc_timer_config(&timer_conf);
+//
+//    ledc_channel_config_t ledc_conf;
+//    ledc_conf.channel    = LEDC_CHANNEL_0;
+//    ledc_conf.duty       = duty;
+//    ledc_conf.gpio_num   = 12;
+//    ledc_conf.intr_type  = LEDC_INTR_DISABLE;
+//    ledc_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
+//    ledc_conf.timer_sel  = LEDC_TIMER_0;
+//    ledc_channel_config(&ledc_conf);
+//
+//    int changesPerSweep = sweepDuration / valueChangeRate;
+//    int changeDelta = (maxValue-minValue) / changesPerSweep;
+//    //int i;
+//    ESP_LOGD(tag, "sweepDuration: %d seconds", sweepDuration);
+//    ESP_LOGD(tag, "changesPerSweep: %d", changesPerSweep);
+//    ESP_LOGD(tag, "changeDelta: %d", changeDelta);
+//    ESP_LOGD(tag, "valueChangeRate: %d", valueChangeRate);
+//
+//    int test_duty = (32768) * 600 / 20000;
+//
+//
+//    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, test_duty);
+//                ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
 //
 //    while(1) {
+//       /* for (i=700; i<2400; i+=20) {
 //
-//    	int val = 0;
-//    	int val2 = 0;
-//    	for(int i = 0; i < 20; i++)
-//    	{
-//    		val+=adc_2_get_voltage(ADC2_CHANNEL_5);//get the  val of channel0
-//    		//val2+=adc_2_get_voltage(ADC2_CHANNEL_9);//get the  val of channel0
-//    	}
-//        float val_avg = val / 20.0f;
-//        //float val2_avg = val2 / 20.0f;
-//        float voltage_1_1 = 0.00084948603 * val_avg + 0.1019;//0.1613;
-//        float voltage_1 = -0.000000047251 * (val_avg * val_avg) + (0.00097725 * val_avg) + 0.0541;
-//       // float voltage_2 = 3.3f * val2_avg / 4096.0f;
-//       // ESP_LOGI(tag, "%f", -0.000047251);
-//        ESP_LOGI(tag, "Counts Value: %d / Voltage %0.2f / %0.2f", (int)val_avg, voltage_1, voltage_1_1);
-//       // ESP_LOGI(tag, "Voltage: %0.2f and %0.2f", voltage_1, voltage_2);
-//        vTaskDelay(1000/portTICK_PERIOD_MS);
+//            duty = (1<<bitSize) * ((float)i / 20000);
+//            ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty);
+//            ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+//
+//            //ESP_LOGD(tag, "DUTY 1: %d", duty);
+//            //ESP_LOGD(tag, "DUTY: %f", (duty / (32768.0)) * 20000);
+//            vTaskDelay(30/portTICK_PERIOD_MS);
+//        }
+//        direction = -direction;
+//        ESP_LOGD(tag, "Direction now %d", direction);*/
+//
+//        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (2400.0 / 20000));
+//                   ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+//
+//                   vTaskDelay(5000/portTICK_PERIOD_MS);
+//        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (600.0 / 20000));
+//                    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+//        vTaskDelay(5000/portTICK_PERIOD_MS);
 //    } // End loop forever
-
-    vTaskDelete(NULL);
-}
-void task_servoSweep(void *ignore) {
-    int bitSize         = 15;
-    int minValue        = 500;  // micro seconds (uS)
-    int maxValue        = 2500; // micro seconds (uS)
-    int sweepDuration   = 1500; // milliseconds (ms)
-    int duty            = (1<<bitSize) * minValue / 20000 ;
-   // int direction       = 1; // 1 = up, -1 = down
-    int valueChangeRate = 20; // msecs
-
-    ESP_LOGD(tag, ">> task_servo1");
-    ledc_timer_config_t timer_conf;
-    timer_conf.bit_num    = LEDC_TIMER_15_BIT;
-    timer_conf.freq_hz    = 50;
-    timer_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
-    timer_conf.timer_num  = LEDC_TIMER_0;
-    ledc_timer_config(&timer_conf);
-
-    ledc_channel_config_t ledc_conf;
-    ledc_conf.channel    = LEDC_CHANNEL_0;
-    ledc_conf.duty       = duty;
-    ledc_conf.gpio_num   = 12;
-    ledc_conf.intr_type  = LEDC_INTR_DISABLE;
-    ledc_conf.speed_mode = LEDC_HIGH_SPEED_MODE;
-    ledc_conf.timer_sel  = LEDC_TIMER_0;
-    ledc_channel_config(&ledc_conf);
-
-    int changesPerSweep = sweepDuration / valueChangeRate;
-    int changeDelta = (maxValue-minValue) / changesPerSweep;
-    //int i;
-    ESP_LOGD(tag, "sweepDuration: %d seconds", sweepDuration);
-    ESP_LOGD(tag, "changesPerSweep: %d", changesPerSweep);
-    ESP_LOGD(tag, "changeDelta: %d", changeDelta);
-    ESP_LOGD(tag, "valueChangeRate: %d", valueChangeRate);
-
-    int test_duty = (32768) * 600 / 20000;
-
-
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, test_duty);
-                ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-
-    while(1) {
-       /* for (i=700; i<2400; i+=20) {
-
-            duty = (1<<bitSize) * ((float)i / 20000);
-            ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty);
-            ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-
-            //ESP_LOGD(tag, "DUTY 1: %d", duty);
-            //ESP_LOGD(tag, "DUTY: %f", (duty / (32768.0)) * 20000);
-            vTaskDelay(30/portTICK_PERIOD_MS);
-        }
-        direction = -direction;
-        ESP_LOGD(tag, "Direction now %d", direction);*/
-
-        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (2400.0 / 20000));
-                   ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-
-                   vTaskDelay(5000/portTICK_PERIOD_MS);
-        ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, (1<<bitSize) * (600.0 / 20000));
-                    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-        vTaskDelay(5000/portTICK_PERIOD_MS);
-    } // End loop forever
-
-    vTaskDelete(NULL);
-}
+//
+//    vTaskDelete(NULL);
+//}
 void app_main(void)
 {
-
-
     nvs_flash_init();
 
-    // Wifi Config
-    wifi_config_t sta_config;
-    memset(&sta_config, 0, sizeof(sta_config));
-    memcpy(sta_config.sta.ssid, CONFIG_ESP32_WIFI_SSID,
-            strlen(CONFIG_ESP32_WIFI_SSID) + 1);
-    memcpy(sta_config.sta.password, CONFIG_ESP32_WIFI_PASSWORD,
-            strlen(CONFIG_ESP32_WIFI_PASSWORD) + 1);
-    sta_config.sta.bssid_set = 0;
+#if defined(CONFIG_WIFI_HOST_AP_MODE)
 
-    // Init
-    wifi_init_connect_ap(sta_config);
+    wifi_config_t apConfig = {
+           .ap = {
+              .ssid=CONFIG_WIFI_HOST_AP_SSID,
+              .ssid_len=0,
+              .password=CONFIG_WIFI_HOST_AP_PASSWORD,
+              .channel=CONFIG_WIFI_HOST_AP_CHANNEL,
+              .authmode=WIFI_AUTH_OPEN,
+              .ssid_hidden=0,
+              .max_connection=CONFIG_WIFI_HOST_AP_MAX_CONNECTIONS,
+              .beacon_interval=100
+           }
+        };
+
+        // Start an AP
+        wifi_init_start_ap(apConfig);
+#elif WIFI_AP_COUNT != 0
+
+        // TODO: Loop this for configured APs...
+        // Wifi Config
+        wifi_config_t sta_config;
+        memset(&sta_config, 0, sizeof(sta_config));
+        memcpy(sta_config.sta.ssid, CONFIG_WIFI_AP1_SSID,
+                strlen(CONFIG_WIFI_AP1_SSID) + 1);
+        memcpy(sta_config.sta.password, CONFIG_WIFI_AP1_PASSWORD,
+                strlen(CONFIG_WIFI_AP1_PASSWORD) + 1);
+        sta_config.sta.bssid_set = 0;
+
+        // Init
+        //wifi_init_connect_ap(sta_config);
+
+#endif
+
+
 
     // TODO: Delay and Wait for IP address
     // POLL For Connection
-    //delay_ms(5000);
+   // delay_ms(5000);
 
     qrobot_init();
 
@@ -302,7 +279,7 @@ void app_main(void)
 
     //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
 
-    //xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
+   // xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
 
   //  stepper_control_set_speed(2000);
 
