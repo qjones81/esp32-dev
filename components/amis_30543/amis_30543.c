@@ -120,6 +120,7 @@ void amis_30543_enable_driver(amis_30543_device_t *device, bool enable)
 	} else {
 	    device->cr2 &= ~0b10000000;
 	}
+	device->enable = enable;
 	amis_30543_apply(*device);
 }
 void amis_30543_set_step_mode(amis_30543_device_t *device, uint8_t mode)
