@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
@@ -184,6 +185,10 @@ amis_30543_device_t *amis_motor_2;
 pid_device_control_t position_pid;
 pid_device_control_t heading_pid;
 
+// Event Groups
+EventGroupHandle_t qrobot_event_group;
+const int ABORT_BIT = BIT0;
+
 typedef struct {
 	char data[DEBUG_STACK_BUFFER_SIZE];
 } socket_event_t;
@@ -243,6 +248,19 @@ void qrobot_navigation_task(void *ignore)
     bool in_navigation = false;
 	waypoint_t goal_waypoint;
 	while (1) {
+
+		EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+		if (in_navigation && (uxBits & ABORT_BIT)) {
+			in_navigation = false;
+			xQueueReset(navigation_waypoint_queue); // Reset queue
+			controller_output_map[GOTO_GOAL_CONTROLLER].enable = false;
+			controller_output_map[GOTO_GOAL_CONTROLLER].v = 0;
+			controller_output_map[GOTO_GOAL_CONTROLLER].w = 0;
+			ESP_LOGE(tag, "NAVIGATION ABORTED!!");
+			vTaskDelay(200 / portTICK_PERIOD_MS);
+			continue;
+		}
+
 		if (navigation_waypoint_queue != NULL) {
 			if (xQueueReceive(navigation_waypoint_queue, &(goal_waypoint),
 					(TickType_t ) 0)) {
@@ -380,9 +398,18 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
 
     bool left_obstacle_detected;
     bool right_obstacle_detected;
-
+    uint32_t settle_time = 0;
+    uint32_t last_time = 0;
     while (1) {
 
+		EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+		if (uxBits & ABORT_BIT) {
+			ESP_LOGE(tag, "AVOIDANCE ABORTED!!");
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
+			break;
+		}
         volts_l = sharp_ir_get_distance_volt(&left_sensor);
         cm_l = sharp_ir_get_distance_cm(&left_sensor);
 
@@ -390,21 +417,78 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
         cm_r = sharp_ir_get_distance_cm(&right_sensor);
 
         if(cm_l >= 70 || cm_l <= 10.0f) {
-            ESP_LOGI(tag, "NO MEASUREMENT LEFT: %f", volts_l);
+           // ESP_LOGI(tag, "NO MEASUREMENT LEFT: %f", volts_l);
             left_obstacle_detected = false;
         } else {
-            ESP_LOGI(tag, "Left Value: %0.2f/%0.2f", volts_l, cm_l);
+           // ESP_LOGI(tag, "Left Value: %0.2f/%0.2f", volts_l, cm_l);
             left_obstacle_detected = true;
         }
 
         if (cm_r >= 70 || cm_r <= 10.0f) {
-            ESP_LOGI(tag, "NO MEASUREMENT RIGHT: %f", volts_r);
+            //ESP_LOGI(tag, "NO MEASUREMENT RIGHT: %f", volts_r);
             right_obstacle_detected = false;
         } else {
-            ESP_LOGI(tag, "Right Value: %0.2f/%0.2f", volts_r, cm_r);
+            //ESP_LOGI(tag, "Right Value: %0.2f/%0.2f", volts_r, cm_r);
             right_obstacle_detected = true;
         }
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+        bool in_avoid = false;
+        float theta_offset = 0.0f;
+
+		if (y_pos > 0) {
+			theta_offset = -0.7f;
+		} else {
+			theta_offset = 0.7f;
+		}
+
+		if((left_obstacle_detected || right_obstacle_detected) && (cm_r < 50.0f || cm_l < 50.0f))
+		{
+			if(!in_avoid)
+			{
+				heading_pid.set_point = theta + theta_offset;
+			}
+			heading_pid.input = theta;
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
+			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+			settle_time = 0;
+		}
+		else {
+			settle_time += (millis() - last_time);
+			if (settle_time >= 500) {
+				in_avoid = false;
+				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
+				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
+				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
+			}
+		}
+
+//		if (left_obstacle_detected && right_obstacle_detected && ((cm_r < 60.0f) && (cm_l < 60.0f))) {
+//			heading_pid.set_point = theta + theta_offset;
+//			heading_pid.input = theta;
+//
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+//
+//		} else if (left_obstacle_detected  && cm_l < 60.0f) {
+//			heading_pid.set_point = theta - theta_offset;
+//			heading_pid.input = theta;
+//
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+//		} else if (right_obstacle_detected && cm_r < 60.0f) {
+//
+//			heading_pid.set_point = theta + theta_offset;
+//			heading_pid.input = theta;
+//
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
+//			controller_output_map[GOTO_GOAL_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+//		}
+		last_time = millis();
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -435,8 +519,17 @@ void qrobot_down_and_back_task(void *ignore)
 	uint8_t recv;
 	bool waypoint_completed = true; // Already at 1st.  Technically.
 
+	// Start obstacle avoid
+	 xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
+
 	while(1)
 	{
+		EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+		if( uxBits & ABORT_BIT) {
+			ESP_LOGE(tag, "DOWN AND BACK ABORTED!!");
+			break;
+		}
+
 		if(start_time == 0) { // Not sure why this is necessary but just get zero the first time always...  Is there a way to force something?
 			start_time = millis();
 			qrobot_send_debug("Started Down and Back: %d", start_time); // And do something else like log the message apparently...  WTF
@@ -458,14 +551,13 @@ void qrobot_down_and_back_task(void *ignore)
 		}
 
 		if(waypoint_index >= waypoint_count) {
+			uint32_t finish_time = millis();
+			qrobot_send_debug("Completion Time: %.2f (s)", (finish_time - start_time) * 0.001f);
 			break;
 		}
 
 		vTaskDelay(20 / portTICK_PERIOD_MS);
 	}
-	uint32_t finish_time = millis();
-	qrobot_send_debug("Completion Time: %.2f (s)", (finish_time - start_time) * 0.001f);
-	//qrobot_send_debug("Started: %d and Finished: %d",start_time, finish_time);
 	vTaskDelete(NULL);
 }
 #if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
@@ -776,6 +868,18 @@ void qrobot_control_debug_service(void *ignore)
 				} else {
 					send(client_sock, "INVALID\n", 8, 0);
 				}
+			}
+			else if(!strncmp(data, "STOP",4)) {
+				EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+				if ((uxBits & ABORT_BIT)) {
+					printf("GOT RESUME!\n");
+					xEventGroupClearBits(qrobot_event_group, ABORT_BIT);
+				}
+				else {
+					printf("GOT ABORT!\n");
+					xEventGroupSetBits(qrobot_event_group, ABORT_BIT);
+				}
+				send(client_sock, "OK\n", 3, 0);
 			}
 		}
 		close(client_sock);
@@ -1333,6 +1437,13 @@ void qrobot_init()
 	#endif
 	delay_ms(500);
 
+	// Setup event groups
+	qrobot_event_group = xEventGroupCreate();
+	if (qrobot_event_group == NULL) {
+		ESP_LOGE(tag, "Failed to create contorller event groups.\n");
+	}
+
+
 	// Setup queues
 	navigation_waypoint_queue = xQueueCreate(1, sizeof(waypoint_t));
 
@@ -1390,8 +1501,8 @@ void qrobot_start()
    // Start navigation task
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
 
-   // Start avoidance task
-   xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
+//   // Start avoidance task
+//   xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
 
 }
 

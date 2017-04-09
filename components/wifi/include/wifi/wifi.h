@@ -32,9 +32,11 @@ extern "C"
 {
 #endif
 
-void wifi_init_connect_ap(wifi_config_t sta_config);
+esp_err_t wifi_network_up();
 
-void wifi_init_start_ap(wifi_config_t ap_config);
+esp_err_t wifi_init_connect_ap();
+
+esp_err_t wifi_init_start_ap();
 
 
 #ifdef __cplusplus

@@ -131,41 +131,11 @@ extern void task_imu_reader_task(void *ignore);
 void app_main(void)
 {
     nvs_flash_init();
-
-#if defined(CONFIG_WIFI_HOST_AP_MODE)
-
-    wifi_config_t apConfig = {
-           .ap = {
-              .ssid=CONFIG_WIFI_HOST_AP_SSID,
-              .ssid_len=0,
-              .password=CONFIG_WIFI_HOST_AP_PASSWORD,
-              .channel=CONFIG_WIFI_HOST_AP_CHANNEL,
-              .authmode=WIFI_AUTH_OPEN,
-              .ssid_hidden=0,
-              .max_connection=CONFIG_WIFI_HOST_AP_MAX_CONNECTIONS,
-              .beacon_interval=100
-           }
-        };
-
-        // Start an AP
-        wifi_init_start_ap(apConfig);
-#elif WIFI_AP_COUNT != 0
-
-        // TODO: Loop this for configured APs...
-        // Wifi Config
-        wifi_config_t sta_config;
-        memset(&sta_config, 0, sizeof(sta_config));
-        memcpy(sta_config.sta.ssid, CONFIG_WIFI_AP1_SSID,
-                strlen(CONFIG_WIFI_AP1_SSID) + 1);
-        memcpy(sta_config.sta.password, CONFIG_WIFI_AP1_PASSWORD,
-                strlen(CONFIG_WIFI_AP1_PASSWORD) + 1);
-        sta_config.sta.bssid_set = 0;
-
-        // Init
-        //wifi_init_connect_ap(sta_config);
-
-#endif
-
+    esp_err_t err = wifi_network_up();
+    if(err != ESP_OK)
+    {
+    	ESP_LOGD(tag, "WI-FI disabled.\n");
+    }
 
 
     // TODO: Delay and Wait for IP address
