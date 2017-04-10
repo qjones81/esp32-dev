@@ -135,28 +135,43 @@ void adns3080_read_frame(adns_3080_device_t *p)
      }*/
     // gpio_set_level(p->cs_pin, 0);
     // Read in pixel data.  Not sure why burst is not working
+
     bool is_first_pixel = true;
     int k = 0;
     for (uint8_t i = 0; i < ADNS3080_PIXELS_Y; i++) {
         for (uint8_t j = 0; j < ADNS3080_PIXELS_X; j++) {
             uint8_t reg_value = read_register(ADNS3080_FRAME_CAPTURE, p);
             if (is_first_pixel && !(reg_value & 0x40)) {
-                ESP_LOGE(tag,
-                        "ERROR: Failed to find first pixel.  Resetting device...");
+                ESP_LOGE(tag, "ERROR: Failed to find first pixel.  Resetting device...");
                 adns_3080_reset(p);
                 return;
             }
             is_first_pixel = false;
-            frame[k++] = (reg_value & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
+            uint8_t pixel = (reg_value & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
+
+            // Threshold and Binarize Pixel
+            pixel = pixel < 50 ? 1 : 0;
+            frame[k++] = pixel;
+
             ///frame[k++] = pixel;
             //printf("%c", asciiart(pixel));
-          //  printf("%d", pixel);
-          //  if (j != ADNS3080_PIXELS_X - 1)
-          //      printf(",");
+           // printf("%d", pixel);
+            //if (j != ADNS3080_PIXELS_X - 1)
+              //  printf(",");
         }
-      //  printf("\n");
+       // printf("\n");
     }
 
+    printf("\n--------------------------------------------------\n");
+    for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++) {
+        for (uint8_t x = 0; x < ADNS3080_PIXELS_X; x++) {
+            printf("%d", frame[ADNS3080_PIXELS_X * x + y]);
+            if (x != ADNS3080_PIXELS_X - 1)
+                printf(",");
+        }
+        printf("\n");
+    }
+    printf("--------------------------------------------------\n\n");
    // ESP_LOGI(tag, "Frame end: %d", millis());
 }
 

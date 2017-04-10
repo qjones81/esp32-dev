@@ -227,8 +227,7 @@ controller_output_t qrobot_get_active_controller_output()
 {
 	for(int i = 0; i < CONTROLLER_TYPE_MAX; i++)
 	{
-		if(controller_output_map[i].enable)
-		{
+		if(controller_output_map[i].enable) {
 			return controller_output_map[i];
 		}
 	}
@@ -248,8 +247,8 @@ void qrobot_navigation_task(void *ignore)
     bool in_navigation = false;
 	waypoint_t goal_waypoint;
 	while (1) {
-
 		EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+
 		if (in_navigation && (uxBits & ABORT_BIT)) {
 			in_navigation = false;
 			xQueueReset(navigation_waypoint_queue); // Reset queue
@@ -276,12 +275,11 @@ void qrobot_navigation_task(void *ignore)
 		}
 
 		if (in_navigation) {
-			//qrobot_send_debug("Navigating.\n");
 			float x = goal_waypoint.x - x_pos;
 			float y = goal_waypoint.y - y_pos;
 			float target_distance = sqrt((x * x) + (y * y));
 			float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
-			if (target_distance <= 0.2) {
+			if (target_distance <= 0.1) {
 			//if (fabs(theta_delta) <= 0.01) {
 				settle_time += (millis() - last_time);
 				if (settle_time >= 100) {
@@ -292,8 +290,7 @@ void qrobot_navigation_task(void *ignore)
 						controller_output_map[GOTO_GOAL_CONTROLLER].w = 0.0f;
 					}
 					// Notify calling task we are there
-					if(goal_waypoint.notify_queue != NULL)
-					{
+					if(goal_waypoint.notify_queue != NULL) {
 						uint8_t send;
 						xQueueSendToFront(goal_waypoint.notify_queue, &send, (TickType_t ) 100 / portTICK_PERIOD_MS );
 					}
@@ -390,104 +387,96 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
     sharp_ir_init(&left_sensor);
     sharp_ir_init(&right_sensor);
 
-    float volts_l;
+   // float volts_l;
     float cm_l;
 
-    float volts_r;
+    //float volts_r;
     float cm_r;
 
+    bool in_avoid = false;
     bool left_obstacle_detected;
     bool right_obstacle_detected;
-    uint32_t settle_time = 0;
-    uint32_t last_time = 0;
+   // uint32_t settle_time = 0;
+    //uint32_t last_time = 0;
+
+    waypoint_t detour_waypoint;
+    detour_waypoint.x = 0;
+    detour_waypoint.y = 0;
+    detour_waypoint.theta = 0;
+    detour_waypoint.is_last = true;
+    //detour_waypoint.notify_queue = queue;
+
     while (1) {
 
-		EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
-		if (uxBits & ABORT_BIT) {
-			ESP_LOGE(tag, "AVOIDANCE ABORTED!!");
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
-			break;
-		}
-        volts_l = sharp_ir_get_distance_volt(&left_sensor);
-        cm_l = sharp_ir_get_distance_cm(&left_sensor);
-
-        volts_r = sharp_ir_get_distance_volt(&right_sensor);
-        cm_r = sharp_ir_get_distance_cm(&right_sensor);
-
-        if(cm_l >= 70 || cm_l <= 10.0f) {
-           // ESP_LOGI(tag, "NO MEASUREMENT LEFT: %f", volts_l);
-            left_obstacle_detected = false;
-        } else {
-           // ESP_LOGI(tag, "Left Value: %0.2f/%0.2f", volts_l, cm_l);
-            left_obstacle_detected = true;
+        EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
+        if (uxBits & ABORT_BIT) {
+            ESP_LOGE(tag, "AVOIDANCE ABORTED!!");
+            controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
+            controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
+            controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
+            break;
         }
 
-        if (cm_r >= 70 || cm_r <= 10.0f) {
-            //ESP_LOGI(tag, "NO MEASUREMENT RIGHT: %f", volts_r);
-            right_obstacle_detected = false;
-        } else {
-            //ESP_LOGI(tag, "Right Value: %0.2f/%0.2f", volts_r, cm_r);
-            right_obstacle_detected = true;
+        if (!in_avoid) { // Look for obstacle
+           // volts_l = sharp_ir_get_distance_volt(&left_sensor);
+            cm_l = sharp_ir_get_distance_cm(&left_sensor);
+
+           // volts_r = sharp_ir_get_distance_volt(&right_sensor);
+            cm_r = sharp_ir_get_distance_cm(&right_sensor);
+
+            if (cm_l >= 70 || cm_l <= 10.0f) {
+                left_obstacle_detected = false;
+            } else {
+                left_obstacle_detected = true;
+            }
+
+            if (cm_r >= 70 || cm_r <= 10.0f) {
+                right_obstacle_detected = false;
+            } else {
+                right_obstacle_detected = true;
+            }
+
+            if ((left_obstacle_detected || right_obstacle_detected)
+                    && (cm_r < 50.0f || cm_l < 50.0f)) {
+
+                // TODO: Need to do some trig to convert to local coordinates and transform back
+                detour_waypoint.x = x_pos + 0.5f; // 45 degrees test
+                detour_waypoint.y = y_pos + 0.5f;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+            } else {
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
+            }
         }
+        else {
+            float x = detour_waypoint.x - x_pos;
+            float y = detour_waypoint.y - y_pos;
+            float target_distance = sqrt((x * x) + (y * y));
+            float theta_d = atan2((detour_waypoint.y - y_pos), (detour_waypoint.x - x_pos));
+            if (target_distance <= 0.1) { // Have we hit the goal?
+                qrobot_send_debug("Detour Arrived: %f\n", target_distance);
 
-        bool in_avoid = false;
-        float theta_offset = 0.0f;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0.0f;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0.0f;
 
-		if (y_pos > 0) {
-			theta_offset = -0.7f;
-		} else {
-			theta_offset = 0.7f;
-		}
+                in_avoid = false;
 
-		if((left_obstacle_detected || right_obstacle_detected) && (cm_r < 50.0f || cm_l < 50.0f))
-		{
-			if(!in_avoid)
-			{
-				heading_pid.set_point = theta + theta_offset;
-			}
-			heading_pid.input = theta;
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
-			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
-			settle_time = 0;
-		}
-		else {
-			settle_time += (millis() - last_time);
-			if (settle_time >= 500) {
-				in_avoid = false;
-				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
-				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
-				controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = 0;
-			}
-		}
+            } else {
+                position_pid.set_point = 0;
+                position_pid.input = target_distance;
+                position_pid.output_max = goto_goal_gain * 0.5f;
+                position_pid.output_min = -goto_goal_gain * 0.5f;
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = -pid_compute(&position_pid);
 
-//		if (left_obstacle_detected && right_obstacle_detected && ((cm_r < 60.0f) && (cm_l < 60.0f))) {
-//			heading_pid.set_point = theta + theta_offset;
-//			heading_pid.input = theta;
-//
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
-//
-//		} else if (left_obstacle_detected  && cm_l < 60.0f) {
-//			heading_pid.set_point = theta - theta_offset;
-//			heading_pid.input = theta;
-//
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
-//		} else if (right_obstacle_detected && cm_r < 60.0f) {
-//
-//			heading_pid.set_point = theta + theta_offset;
-//			heading_pid.input = theta;
-//
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
-//			controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = controller_output_map[GOTO_GOAL_CONTROLLER].v;
-//			controller_output_map[GOTO_GOAL_CONTROLLER].w = -pid_compute_angle(&heading_pid);
-//		}
-		last_time = millis();
+                heading_pid.set_point = theta_d;
+                heading_pid.input = theta;
+
+                controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].w = -pid_compute_angle(&heading_pid);
+            }
+        }
+       // last_time = millis();
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
@@ -507,12 +496,13 @@ void qrobot_down_and_back_task(void *ignore)
     waypoint_list[0].is_last = false;
     waypoint_list[0].notify_queue = queue;
 
-    waypoint_list[1].x = 0.f;
+    waypoint_list[1].x = (0.5f * .3048);
     waypoint_list[1].y = -0.5f;
     waypoint_list[1].theta = 0;
     waypoint_list[1].is_last = true;
     waypoint_list[1].notify_queue = queue;
 
+    // TODO: Add a turn?
     uint32_t start_time = 0;
     uint8_t waypoint_index = 0;
     uint8_t waypoint_count = 2;
@@ -520,7 +510,8 @@ void qrobot_down_and_back_task(void *ignore)
 	bool waypoint_completed = true; // Already at 1st.  Technically.
 
 	// Start obstacle avoid
-	 xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
+	TaskHandle_t xHandle = NULL;
+	xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, &xHandle);
 
 	while(1)
 	{
@@ -535,6 +526,7 @@ void qrobot_down_and_back_task(void *ignore)
 			qrobot_send_debug("Started Down and Back: %d", start_time); // And do something else like log the message apparently...  WTF
 		}
 
+		// TODO: Gotta reorder this.  Kind of weird reverse logic.
 		if(waypoint_completed) {
 			waypoint_completed = false;
 			// Send waypoint
@@ -544,7 +536,7 @@ void qrobot_down_and_back_task(void *ignore)
 		}
 
 		// Wait for completion
-		if (xQueueReceive(waypoint_list[waypoint_index].notify_queue, &(recv), (TickType_t ) 100 / portTICK_PERIOD_MS)) {
+		if (xQueueReceive(waypoint_list[waypoint_index].notify_queue, &(recv), (TickType_t ) 10 / portTICK_PERIOD_MS)) {
 			qrobot_send_debug("Completed Waypoint!");
 			waypoint_completed = true;
 			waypoint_index++;
@@ -555,9 +547,10 @@ void qrobot_down_and_back_task(void *ignore)
 			qrobot_send_debug("Completion Time: %.2f (s)", (finish_time - start_time) * 0.001f);
 			break;
 		}
-
 		vTaskDelay(20 / portTICK_PERIOD_MS);
 	}
+	// Kill avoidance task
+	vTaskDelete(xHandle);
 	vTaskDelete(NULL);
 }
 #if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
@@ -961,7 +954,6 @@ float qrobot_speed_PID_control(float dt, float input, float setPoint)
   pid_error_sum += constrain(error, -ITERM_MAX_ERROR, ITERM_MAX_ERROR);
   pid_error_sum = constrain(pid_error_sum, -ITERM_MAX, ITERM_MAX);
 
-
   output = Kp_speed * error + Ki_speed * pid_error_sum * dt * 0.001; // DT is in miliseconds...
   return (output);
 }
@@ -1114,19 +1106,12 @@ void qrobot_controller_task(void *ignore)
 			if ((current_tilt < 45) && (current_tilt > -45)) {
 				Kp_balance = Kp_upright;         // CONTROL GAINS FOR UPRIGHT
 				Kd_balance = Kd_upright;
-				//Kp_speed = KP_SPEED;
-				//Ki_speed = KI_SPEED;
-			} else // We are in the raise up procedure => we use special control parameters
-			{
+			} else { // We are in the raise up procedure => we use special control parameters
 				Kp_balance = Kp_raise;         // CONTROL GAINS FOR RAISE UP
 				Kd_balance = Kd_raise;
-
-				//Kp_speed = 0;
-				//Ki_speed = 0;
 			}
 		}
-		else
-		{
+		else {
 			stepper_control_set_speed(STEPPER_MOTOR_1, 0);
 			stepper_control_set_speed(STEPPER_MOTOR_2, 0);
 			control_output = 0;
@@ -1138,9 +1123,6 @@ void qrobot_controller_task(void *ignore)
 
 			Kp_balance = Kp_upright;         // CONTROL GAINS FOR RAISE UP
 			Kd_balance = Kd_upright;
-			//Kp_speed = 0;
-			//Ki_speed = 0;
-
 			// Kill motor drivers.  Try to save some poweer
 			// Make sure motors are disabled, TODO: Better way for this to just be flagged when
 			if (amis_motor_1->enable) {
@@ -1149,8 +1131,6 @@ void qrobot_controller_task(void *ignore)
 			if (amis_motor_2->enable) {
 				amis_30543_enable_driver(amis_motor_2, false);
 			}
-
-
 		}
 		last_update = millis();
 		uint32_t loop_time = millis() - now;
@@ -1500,9 +1480,6 @@ void qrobot_start()
 
    // Start navigation task
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
-
-//   // Start avoidance task
-//   xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, NULL);
 
 }
 

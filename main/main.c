@@ -15,7 +15,7 @@
 #include "sharpir/sharpir.h"
 
 //#include "amis_30543/amis_30543.h"
-//#include "adns3080/adns3080.h"
+#include "adns3080/adns3080.h"
 //#include "stepper/stepper.h"
 //#include "ar6115e/ar6115e.h"
 #include "utils/utils.h"
@@ -40,7 +40,7 @@ extern void task_stepper_control2(void *ignore);
 extern void task_adns3080_reader_task(void *ignore);
 extern void task_imu_reader_task(void *ignore);
 
-//adns_3080_device_t adns_test_2;
+//adns_3080_device_t adns_sensor_test1;
 //
 //void task_adc_test(void *ignore) {
 //    ESP_LOGD(tag, ">> task_adc");
@@ -131,20 +131,15 @@ extern void task_imu_reader_task(void *ignore);
 void app_main(void)
 {
     nvs_flash_init();
-    esp_err_t err = wifi_network_up();
-    if(err != ESP_OK)
-    {
-    	ESP_LOGD(tag, "WI-FI disabled.\n");
-    }
+    //esp_err_t err = wifi_network_up();
+    //if(err != ESP_OK)
+    //{
+    //	ESP_LOGD(tag, "WI-FI disabled.\n");
+    //}
 
+   // qrobot_init();
 
-    // TODO: Delay and Wait for IP address
-    // POLL For Connection
-   // delay_ms(5000);
-
-    qrobot_init();
-
-    qrobot_start();
+  //  qrobot_start();
 
 /*
     // Pin 5, 1Mhz, Mode 0
@@ -170,7 +165,28 @@ void app_main(void)
 
    // ESP_LOGI(tag, "AMIS-30543 Initialized.\n");
 
-       // xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
+    // Init SPI Bus
+    ESP_LOGI(tag, "Initializing SPI Bus...\n");
+    ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
+    ESP_LOGI(tag, "SPI Bus Initialized.\n");
+
+    adns_3080_device_t *adns_sensor = (adns_3080_device_t *) malloc(sizeof(adns_3080_device_t));
+
+    // Check for allocation blah blah
+    // 2Mhz, Mode 3
+    ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
+    ESP_ERROR_CHECK(spi_add_device(-1, 2000000, 3, &adns_sensor->spi_device));
+    ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
+
+    // Setup Pins
+    adns_sensor->reset_pin = GPIO_NUM_25;
+    adns_sensor->cs_pin = GPIO_NUM_13;
+    adns_sensor->x = 0;
+    adns_sensor->y = 0;
+
+    adns_3080_init(adns_sensor);
+
+   //xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
   //  ESP_LOGI(tag, "Clock Frequency: %d.\n", APB_CLK_FREQ);
     //stepper_motor_device_t *motor_1_device = NULL;
     //stepper_motor_device_t *motor_2_device = NULL;
