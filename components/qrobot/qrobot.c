@@ -48,6 +48,7 @@
 #include "ar6115e/ar6115e.h"
 #include "pid/pid.h"
 #include "utils/utils.h"
+#include "utils/vector.h"
 #include "wifi/wifi.h"
 //#include "adc/adc.h"
 #include "driver/adc.h"
@@ -146,7 +147,7 @@ float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 
 float angle_offset = -2.0f; // Offset for hardware issues
 
-uint16_t motor_current = 2000; // Stepper motor current in mA
+uint16_t motor_current = 1000; // Stepper motor current in mA
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
 uint8_t microsteps = 16;
 //end save
@@ -281,7 +282,6 @@ void qrobot_navigation_task(void *ignore)
 			float target_distance = sqrt((x * x) + (y * y));
 			float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
 			if (target_distance <= 0.1) {
-			//if (fabs(theta_delta) <= 0.01) {
 				settle_time += (millis() - last_time);
 				if (settle_time >= 100) {
 					qrobot_send_debug("Arrived: %f\n", target_distance);
@@ -493,13 +493,15 @@ void qrobot_line_follower_task(void *ignore) {
     int img_height = 30;
     image_t *image_frame = NULL;
     image_t *image_frame_masked = NULL;
+    image_t *image_blobs = NULL;
     create_image(img_width, img_height, sizeof(uint8_t), &image_frame);
     create_image(img_width, img_height, sizeof(uint8_t), &image_frame_masked);
+    create_image(img_width, img_height, sizeof(uint8_t), &image_blobs);
 
     // Setup masking regions
     mask_region_t image_mask_upper={
                 .top=0,
-                .bottom=5,
+                .bottom=3,
                 .left=0,
                 .right=30
             };
@@ -511,11 +513,13 @@ void qrobot_line_follower_task(void *ignore) {
             };
 
     uint32_t settle_time = 0;
-       uint32_t last_time = 0;
+    uint32_t last_time = 0;
+
     while (1) {
+		vector image_moments;
+		vector_init(&image_moments);
 
-
-    	//uint32_t start_read = millis(); // For profiling
+    	uint32_t start_read = millis(); // For profiling
         EventBits_t uxBits = xEventGroupGetBits(qrobot_event_group);
         if (uxBits & ABORT_BIT) {
             ESP_LOGE(tag, "LINE_FOLLOWER ABORTED!!");
@@ -535,44 +539,53 @@ void qrobot_line_follower_task(void *ignore) {
         mask_image(image_frame, image_mask_upper, 0, image_frame_masked);
         mask_image(image_frame_masked, image_mask_lower, 0, image_frame_masked);
 
+        //mask_image(image_frame, image_mask_lower, 0, image_frame_masked);
+
+        // Look for connected images
+        uint8_t num_blobs = image_connected_components(image_frame_masked, image_blobs);
+
+        ESP_LOGI(tag, "Blobs Detected: %d", num_blobs);
+
         // Compute moments/centroids
-        image_moment_t M = calculate_moments(image_frame);
-		if (M.m00 > 40) {
-			uint32_t cx = (uint32_t) ((float) M.m10 / M.m00);
-			uint32_t cy = (uint32_t) ((float) M.m01 / M.m00);
+        calculate_local_moments(image_blobs, num_blobs, &image_moments);
+        for (int i = 0; i < VECTOR_TOTAL(image_moments); i++) {
+        	image_moment_t *M = VECTOR_GET(image_moments, image_moment_t *, i);
 
-			// Debug tracking point
-			//image_set_pixel(image_frame_masked, cx, cy, 88);
+			if (M->m00 > 40) {
+				uint32_t cx = (uint32_t) ((float) M->m10 / M->m00);
+				uint32_t cy = (uint32_t) ((float) M->m01 / M->m00);
 
-			// Update PIDS
-			line_following_pid.set_point = img_width * 0.5;
-			line_following_pid.input = cx;
-			line_following_pid.output_max = 0.8f;
-			line_following_pid.output_min = -0.8f;
-			controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = true;
-			controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
-			controller_output_map[LINE_FOLLOWER_CONTROLLER].w = -pid_compute(&line_following_pid);
-		}
-		else {
-			settle_time += (millis() - last_time);
-			if (settle_time >= 500) {
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = false;
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
+				// Debug tracking point
+				image_set_pixel(image_frame_masked, cx, cy, 88);
+
+				// Update PIDS
+				line_following_pid.set_point = img_width * 0.5;
+				line_following_pid.input = cx;
+				line_following_pid.output_max = 0.8f;
+				line_following_pid.output_min = -0.8f;
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = true;
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = -pid_compute(&line_following_pid);
+			} else {
+				settle_time += (millis() - last_time);
+				if (settle_time >= 500) {
+					controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = false;
+					controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
+					controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
+				} else {
+					controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.1f;
+				}
 			}
-			else
-			{
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.1f;
-			}
-		}
-        // Now Debug it
-       // print_image(image_frame_masked);
+        }
+
+        // Now debug it
+        print_image(image_frame_masked);
 
        // ESP_LOGI(tag, "Control signal: %.2f/%d", -controller_output_map[LINE_FOLLOWER_CONTROLLER].w, M.m00);
 
-       // ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
-         last_time = millis();
-         vTaskDelay(100 / portTICK_PERIOD_MS); // 5 hz
+		ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
+		last_time = millis();
+		vTaskDelay(1000 / portTICK_PERIOD_MS); // 10 hz
     }
     vTaskDelete(NULL);
 }
@@ -808,7 +821,7 @@ void qrobot_control_debug_service(void *ignore)
                     wheel_diameter_1 = atof(params[0]);
                     wheel_diameter_2 = atof(params[1]);
                     wheel_base = atof(params[2]);
-                    //angle_offset = atof(params[3]);
+                    angle_offset = atof(params[3]);
 
                     wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_diameter_1); // steps per m (Left)
                     wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_diameter_2); // steps per m (Right)
@@ -1464,100 +1477,100 @@ void qrobot_init()
 
 	ESP_LOGI(tag, "Initializing Sensors...");
 
-	//Init sensors
-	qrobot_init_mpu9250(); // Init IMU
-
-	uint32_t gyro_init_begin = millis();
-	delay_ms(500);
-	ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
-	delay_ms(500);
-
-	// Init ADNS
+//	//Init sensors
+//	qrobot_init_mpu9250(); // Init IMU
+//
+//	uint32_t gyro_init_begin = millis();
+//	delay_ms(500);
+//	ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
+//	delay_ms(500);
+//
+//	// Init ADNS
 	qrobot_init_adns(); // Init ADNS
-
-	//Init motors
-	qrobot_init_stepper_motors(); // Init Steppers
-
-	// Init Drivers
-	qrobot_init_amis30543_drivers(); // Init motor drivers
-
-	// Init Control
-	qrobot_init_ar6115e(); // RC input
-
-	// Gyro Calibration delay
-	delay_ms(max(1, 10000 - (millis() - gyro_init_begin)));
-
-	// Pulse motors for ready indication
-	for (uint8_t k = 0; k < 5; k++) {
-		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
-		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
-		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
-		delay_ms(200);
-		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
-		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
-
-		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
-		delay_ms(200);
-	}
-	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
-	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
-
-	//Init sockets
-	#if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
-		xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 8192, NULL, 3, NULL);
-	#endif
-
-	#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
-		sock = (socket_device_t *) malloc(sizeof(socket_device_t));
-		sock->port = CONFIG_QROBOT_DEBUG_PORT;
-		socket_server_init(sock);
-		socket_server_start(sock);
-		socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
-		xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
-	#endif
-	delay_ms(500);
-
+//
+//	//Init motors
+//	qrobot_init_stepper_motors(); // Init Steppers
+//
+//	// Init Drivers
+//	qrobot_init_amis30543_drivers(); // Init motor drivers
+//
+//	// Init Control
+//	qrobot_init_ar6115e(); // RC input
+//
+//	// Gyro Calibration delay
+//	delay_ms(max(1, 10000 - (millis() - gyro_init_begin)));
+//
+//	// Pulse motors for ready indication
+//	for (uint8_t k = 0; k < 5; k++) {
+//		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, 5 * 46);
+//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO + 100);
+//		delay_ms(200);
+//		stepper_control_set_speed(STEPPER_MOTOR_1, -5 * 46);
+//		stepper_control_set_speed(STEPPER_MOTOR_2, -5 * 46);
+//
+//		//BROBOT.moveServo1(SERVO_AUX_NEUTRO - 100);
+//		delay_ms(200);
+//	}
+//	stepper_control_set_speed(STEPPER_MOTOR_1, 0);
+//	stepper_control_set_speed(STEPPER_MOTOR_2, 0);
+//
+//	//Init sockets
+//	#if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
+//		xTaskCreate(&qrobot_control_debug_service, "control_debug_service", 8192, NULL, 3, NULL);
+//	#endif
+//
+//	#if defined(CONFIG_QROBOT_USE_DEBUG_SERVICE)
+//		sock = (socket_device_t *) malloc(sizeof(socket_device_t));
+//		sock->port = CONFIG_QROBOT_DEBUG_PORT;
+//		socket_server_init(sock);
+//		socket_server_start(sock);
+//		socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
+//		xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
+//	#endif
+//	delay_ms(500);
+//
 	// Setup event groups
 	qrobot_event_group = xEventGroupCreate();
 	if (qrobot_event_group == NULL) {
 		ESP_LOGE(tag, "Failed to create contorller event groups.\n");
 	}
-
-	// Setup queues
-	navigation_waypoint_queue = xQueueCreate(1, sizeof(waypoint_t));
-
-	// Setup Robot Parameters
-	steps_per_rev = microsteps * 200;
-	wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_diameter_1); // steps per m (Left)
-	wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_diameter_2); // steps per m (Right)
-
-	// Reset Heading biases...
-	//imu_heading_bias = mpu_9250_get_yaw(); // TODO: Need to get full 9 Dof sensor fusion working.  Too much drift
-
-	// Reset Odometers...
-	stepper_control_reset_steps(STEPPER_MOTOR_1);
-	stepper_control_reset_steps(STEPPER_MOTOR_2);
-
-	// Update PIDs
-	memset(&position_pid, 0, sizeof(pid_device_control_t));
-
-	position_pid.k_p = Kp_position;
-	position_pid.k_i = Ki_position;
-	position_pid.k_d = Kd_position;
-	position_pid.integral_windup_max = 0.01f;
-	position_pid.output_min = -1.0f;
-	position_pid.output_max = 1.0f;
-	position_pid.clamp_output = true;
-
-	memset(&heading_pid, 0, sizeof(pid_device_control_t));
-
-	heading_pid.k_p = Kp_heading;
-	heading_pid.k_i = Ki_heading;
-	heading_pid.k_d = Kd_heading;
-	heading_pid.integral_windup_max = 0.01f;
-	heading_pid.output_min = -1.0f;
-	heading_pid.output_max = 1.0f;
-	heading_pid.clamp_output = true;
+//
+//	// Setup queues
+//	navigation_waypoint_queue = xQueueCreate(1, sizeof(waypoint_t));
+//
+//	// Setup Robot Parameters
+//	steps_per_rev = microsteps * 200;
+//	wheel_steps_per_m_1 = steps_per_rev / (M_PI * wheel_diameter_1); // steps per m (Left)
+//	wheel_steps_per_m_2 = steps_per_rev / (M_PI * wheel_diameter_2); // steps per m (Right)
+//
+//	// Reset Heading biases...
+//	//imu_heading_bias = mpu_9250_get_yaw(); // TODO: Need to get full 9 Dof sensor fusion working.  Too much drift
+//
+//	// Reset Odometers...
+//	stepper_control_reset_steps(STEPPER_MOTOR_1);
+//	stepper_control_reset_steps(STEPPER_MOTOR_2);
+//
+//	// Update PIDs
+//	memset(&position_pid, 0, sizeof(pid_device_control_t));
+//
+//	position_pid.k_p = Kp_position;
+//	position_pid.k_i = Ki_position;
+//	position_pid.k_d = Kd_position;
+//	position_pid.integral_windup_max = 0.01f;
+//	position_pid.output_min = -1.0f;
+//	position_pid.output_max = 1.0f;
+//	position_pid.clamp_output = true;
+//
+//	memset(&heading_pid, 0, sizeof(pid_device_control_t));
+//
+//	heading_pid.k_p = Kp_heading;
+//	heading_pid.k_i = Ki_heading;
+//	heading_pid.k_d = Kd_heading;
+//	heading_pid.integral_windup_max = 0.01f;
+//	heading_pid.output_min = -1.0f;
+//	heading_pid.output_max = 1.0f;
+//	heading_pid.clamp_output = true;
 
 	memset(&line_following_pid, 0, sizeof(pid_device_control_t));
 
@@ -1580,14 +1593,14 @@ void qrobot_start()
    robot_stable = false;
 
    // Start main controller task pin it with the steppers
-   xTaskCreatePinnedToCore(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL, 1);
+  // xTaskCreatePinnedToCore(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL, 1);
 
    // Start odometry task
   // xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 5, NULL);
 
    // Start navigation task
  //  xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
-  // xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 4096, NULL,4, NULL);
+   xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 4096, NULL,4, NULL);
 
 }
 

@@ -25,6 +25,8 @@
 #ifndef IMAGE_PROCESSING_H_
 #define IMAGE_PROCESSING_H_
 
+#include "utils/vector.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -70,6 +72,14 @@ typedef struct {
 image_moment_t calculate_moments(image_t *_inimage);
 
 /**
+ * @brief Calculate binary image moments, only up the 1st order for now.  Is a microcontroller after all...
+ * @param in_image: Image to compute moments for.  Calculated locally for each blob.  Input image is not modified.
+ * @param num_blobs: How many blobs in image.  Could be auto calced by traversing array first.  Trying to save some time
+ * @param moments_out: Calculated moment vector
+ */
+void calculate_local_moments(image_t *in_image, uint8_t num_blobs, vector *moments_out);
+
+/**
  * @brief Create image utility helper function
  * @param width: Desired image width
  * @param height: Desired image height
@@ -83,9 +93,17 @@ void create_image(uint32_t width, uint32_t height, uint8_t depth, image_t **out_
  * @param in_image: image to mask
  * @param mask_region_t: mask parameters for area of image to KEEP
  * @param value: value to mask with
- * @param out_mask: returned masked imag
+ * @param out_mask: returned masked image
  */
 void mask_image(image_t *in_image, mask_region_t image_mask, uint32_t value, image_t *out_mask);
+
+/**
+ * @brief Mask image function.  This does NOT resize images.  Output image must match input image dimensions and depth
+ * @param in_image: image to label
+ * @param out_labeled: returned labeled image
+ * @return: number of blobs/labels found
+ */
+uint8_t image_connected_components(image_t *in_image, image_t *out_labeled);
 
 /**
  * @brief Create image utility helper function

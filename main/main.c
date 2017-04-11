@@ -98,11 +98,11 @@ static char tag[] = "ROBOT_MAIN";
 void app_main(void)
 {
     nvs_flash_init();
-    esp_err_t err = wifi_network_up();
-    if(err != ESP_OK)
-    {
-    	ESP_LOGD(tag, "WI-FI disabled.\n");
-    }
+//    esp_err_t err = wifi_network_up();
+//    if(err != ESP_OK)
+//    {
+//    	ESP_LOGD(tag, "WI-FI disabled.\n");
+//    }
 
     // Init platform
     qrobot_init();

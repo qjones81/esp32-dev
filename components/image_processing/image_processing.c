@@ -25,12 +25,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_attr.h>
 #include <esp_log.h>
+#include "utils/utils.h"
+
 #include "image_processing.h"
 
 static const char *tag = "image_processing";
+
+typedef struct label_node {
+	uint8_t label_id;
+	struct label_node *parent;
+
+} label_node_t;
+
 
 // Reference: http://aishack.in/tutorials/image-moments/
 image_moment_t calculate_moments(image_t *in_image)
@@ -56,6 +66,33 @@ image_moment_t calculate_moments(image_t *in_image)
 		}
 	}
 	return ret_moments;
+}
+
+void calculate_local_moments(image_t *in_image, uint8_t num_blobs, vector *moments_out)
+{
+	if(in_image == NULL) {
+		ESP_LOGE(tag, "calculate_local_moments: NULL Parameter passed for input image");
+		return;
+	}
+
+	for(int i = 1; i <= num_blobs; i++) // 1 indexed
+	{
+		image_moment_t *local_moment = malloc(sizeof(image_moment_t));
+		memset(local_moment, 0, sizeof(image_moment_t)); // Zero it out just in case
+		for (int y = 0; y < in_image->height; y++) {
+			for (int x = 0; x < in_image->width; x++) {
+				if (in_image->data[in_image->height * y + x] == i) {
+					local_moment->m00 += 1; //sum(X,Y) of x^0*y^0
+					local_moment->m10 += x; //sum(X,Y) of x^1*y^0
+					local_moment->m01 += y; //sum(X,Y) of x^0*y^1
+					local_moment->m11 += (x * y); //sum(X,Y) of x^1*y^1
+				}
+			}
+		}
+
+		ESP_LOGI(tag, "Adding Moment: %d", i);
+		vector_add(moments_out, local_moment); // Add to output vector
+	}
 }
 
 void create_image(uint32_t width, uint32_t height, uint8_t depth, image_t **out_image)
@@ -93,6 +130,84 @@ void mask_image(image_t *in_image, mask_region_t image_mask, uint32_t value, ima
 			}
 		}
 	}
+}
+
+uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
+{
+	uint8_t num_components = 0;
+	uint8_t num_labels = 1; // Start with 1 for non zero indexing purposes.  0 is used for background
+
+	uint32_t width_labels = in_image->width + 1; // Pad it by 1 pixel
+	uint32_t height_labels = in_image->height + 1; // Pad it by 1 pixel
+
+	// Using uint8 here, so 255 max labels.
+	uint8_t *label_image = malloc(width_labels * height_labels * sizeof(uint8_t));
+
+	// Create label component array with padding for edge cases
+	label_node_t labels[32]; // 32 max labels for now
+
+	// zero it all out.
+	memset(label_image, 0, width_labels * height_labels * sizeof(uint8_t));
+	memset(&labels, 0, 32 * sizeof(label_node_t));
+
+	// First Pass
+	for (int y = 0, y_label = 1; y < in_image->height; y++, y_label++) { // Start at one since we are padded for labels
+		for (int x = 0, x_label = 1; x < in_image->width; x++, x_label++) {
+			uint8_t pixel = in_image->data[in_image->height * y + x];
+			uint8_t *curr_label = &label_image[height_labels * y_label + x_label]; // offset for padding with ptr math
+			uint8_t left_label = label_image[height_labels * y_label + (x_label - 1)]; // offset for padding with ptr math
+			uint8_t above_label = label_image[height_labels * (y_label - 1) + x_label]; // offset for padding with ptr math
+
+			if(pixel != 0)  { // Not a background pixel
+				if(left_label == 0 && above_label == 0) {
+					// Create a new label
+					labels[num_labels].label_id = num_labels;
+					labels[num_labels].parent = NULL; // Shouldn't be necessary but just make it explicit
+					*curr_label = num_labels++;
+				}
+				else if (left_label == 0 && above_label != 0) {
+					*curr_label = above_label;
+				}
+				else if(left_label != 0 && above_label == 0) {
+					*curr_label = left_label;
+				}
+				else if(left_label != 0 && above_label != 0) {
+					if(left_label == above_label) { // Same just pick one
+						*curr_label = left_label;
+					}
+					else if(left_label < above_label) {
+						*curr_label = left_label;
+						labels[above_label].parent = &labels[left_label];
+					}
+					else {
+						*curr_label = above_label;
+						labels[left_label].parent = &labels[above_label];
+					}
+				}
+			}
+		}
+	}
+
+	// Second Pass for label cleanup
+	for (int y = 0, y_label = 1; y < out_labeled->height; y++, y_label++) { // Start at one since we are padded for labels
+		for (int x = 0, x_label = 1; x < out_labeled->width; x++, x_label++) {
+			uint8_t equivalent_label = label_image[height_labels * y_label + x_label];
+			label_node_t *node = &labels[equivalent_label];
+			while(node != NULL) {
+				equivalent_label = node->label_id;
+				node = node->parent;
+			}
+			out_labeled->data[out_labeled->height * y + x] = equivalent_label;
+			num_components = max(equivalent_label, num_components);
+		}
+	}
+	ESP_LOGI(tag, "Found: %d components", num_components);
+
+	// Free Memory
+	free(label_image);
+
+	// Return
+	return num_components;
 }
 void image_set_pixel(image_t *in_image, uint32_t x,  uint32_t  y, uint8_t value)
 {

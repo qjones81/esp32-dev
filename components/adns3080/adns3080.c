@@ -198,7 +198,7 @@ bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
 			}
 			if(started == true) {
 				uint8_t pixel_out = (pixel_in & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
-				pixel_out = pixel_out < 20 ? 1 : 0; // Threshold and Binarize Pixel and Reorder image
+				pixel_out = pixel_out < 50 ? 1 : 0; // Threshold and Binarize Pixel and Reorder image
 				frame_out->data[ADNS3080_PIXELS_X * (ADNS3080_PIXELS_X - (x+1)) + (ADNS3080_PIXELS_Y - y - 1)] = pixel_out; // Copy into frame buffer
 				x++; // Increment counter here since is conditionally dependent
 			}
