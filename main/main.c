@@ -15,7 +15,7 @@
 #include "sharpir/sharpir.h"
 
 //#include "amis_30543/amis_30543.h"
-#include "adns3080/adns3080.h"
+//#include "adns3080/adns3080.h"
 //#include "stepper/stepper.h"
 //#include "ar6115e/ar6115e.h"
 #include "utils/utils.h"
@@ -28,41 +28,8 @@
 
 // WARNING.  THIS FILE IS A MESS.  JUST A PLACEHOLDER FOR TESTING NEW FUNCTIONS/FEATURES AS I ADD THEM.  WILL WORKING CORE TEST FUNCTIONS SOON.
 
-//esp_err_t event_handler(void *ctx, system_event_t *event)
-//{
-//    return ESP_OK;
-//}
-
 static char tag[] = "ROBOT_MAIN";
 
-extern void task_stepper_control(void *ignore);
-extern void task_stepper_control2(void *ignore);
-extern void task_adns3080_reader_task(void *ignore);
-extern void task_imu_reader_task(void *ignore);
-
-//adns_3080_device_t adns_sensor_test1;
-//
-//void task_adc_test(void *ignore) {
-//    ESP_LOGD(tag, ">> task_adc");
-//
-//         adc1_config_width(ADC_WIDTH_12Bit);//config adc2 width
-//         adc1_config_channel_atten(ADC1_CHANNEL_6,ADC_ATTEN_11db);//config channel0 attenuation
-//
-//        adc1_config_width(ADC_WIDTH_12Bit);//config adc2 width
-//         adc1_config_channel_atten(ADC1_CHANNEL_7,ADC_ATTEN_11db);//config channel0 attenuation
-//
-//
-//        while(1) {
-//
-//             int val=adc1_get_voltage(ADC1_CHANNEL_6);//get the  val of channel0
-//            int val2=adc1_get_voltage(ADC1_CHANNEL_7);//get the  val of channel0
-//            ESP_LOGI(tag, "Value: %d and %d", val, val2);
-//
-//            vTaskDelay(1000/portTICK_PERIOD_MS);
-//        } // End loop forever
-//
-//    vTaskDelete(NULL);
-//}
 //void task_servoSweep(void *ignore) {
 //    int bitSize         = 15;
 //    int minValue        = 500;  // micro seconds (uS)
@@ -131,143 +98,19 @@ extern void task_imu_reader_task(void *ignore);
 void app_main(void)
 {
     nvs_flash_init();
-    //esp_err_t err = wifi_network_up();
-    //if(err != ESP_OK)
-    //{
-    //	ESP_LOGD(tag, "WI-FI disabled.\n");
-    //}
+    esp_err_t err = wifi_network_up();
+    if(err != ESP_OK)
+    {
+    	ESP_LOGD(tag, "WI-FI disabled.\n");
+    }
 
-   // qrobot_init();
+    // Init platform
+    qrobot_init();
 
-  //  qrobot_start();
-
-/*
-    // Pin 5, 1Mhz, Mode 0
-    ESP_LOGI(tag, "Adding AMIS-30543 to SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_add_device(VSPI_CS, 1000000, 0, &amis_test.spi_device)); // TODO: Pass In Values
-    ESP_LOGI(tag, "Successfully added AMIS-30543.\n");
-
-    delay_ms(10);
-
-    ESP_LOGI(tag, "Initializing AMIS-30543...\n");
-    amis_30543_init(&amis_test); // Init
-
-    amis_30543_reset(&amis_test); // Reset
-
-    amis_30543_set_current(&amis_test, 1000); // Set current limit to 1000ma
-
-    amis_30543_set_step_mode(&amis_test, MicroStep16); // Set microstepping to 1/16
-
-    //amis_30543_pwm_frequency_double(&amis_test, true); // 45.6 khz
-
-    amis_30543_enable_driver(&amis_test, true); // Enable motor output
-*/
-
-   // ESP_LOGI(tag, "AMIS-30543 Initialized.\n");
-
-    // Init SPI Bus
-    ESP_LOGI(tag, "Initializing SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
-    ESP_LOGI(tag, "SPI Bus Initialized.\n");
-
-    adns_3080_device_t *adns_sensor = (adns_3080_device_t *) malloc(sizeof(adns_3080_device_t));
-
-    // Check for allocation blah blah
-    // 2Mhz, Mode 3
-    ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_add_device(-1, 2000000, 3, &adns_sensor->spi_device));
-    ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
-
-    // Setup Pins
-    adns_sensor->reset_pin = GPIO_NUM_25;
-    adns_sensor->cs_pin = GPIO_NUM_13;
-    adns_sensor->x = 0;
-    adns_sensor->y = 0;
-
-    adns_3080_init(adns_sensor);
-
-   //xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 2048, NULL, 3, NULL);
-  //  ESP_LOGI(tag, "Clock Frequency: %d.\n", APB_CLK_FREQ);
-    //stepper_motor_device_t *motor_1_device = NULL;
-    //stepper_motor_device_t *motor_2_device = NULL;
-
-//    stepper_motor_device_config_t motor_1_cfg={
-//            .step_pin=GPIO_NUM_16,
-//            .dir_pin=GPIO_NUM_4,
-//            .step_hold_delay=10
-//        };
-//
-//    stepper_motor_device_config_t motor_2_cfg={
-//            .step_pin=GPIO_NUM_15,
-//          l  .dir_pin=GPIO_NUM_2,
-//            .step_hold_delay=10
-//        };
-//
-//    stepper_control_add_device(STEPPER_MOTOR_1, motor_1_cfg);
-   // stepper_control_add_device(STEPPER_MOTOR_2, motor_2_cfg);
-   // stepper_control_add_device(motor_2_cfg, motor_2_device);
-   // stepper_control_start();
-
-    //TickType_t ticks_sec = get_stepper_control_ticks_per_second();
-
-    //ESP_LOGI(tag, "Ticks per Second: %d\n", ticks_sec);
-
-   // TickType_t ticks_step = ticks_sec / 5333;
-   // ESP_LOGI(tag, "Num Ticks For 5333 Steps per Second: %d\n", ticks_step);
-
-   // ESP_LOGI(tag, "Address: 0%p\n", (void*)&motor_1_device);
-    //motor_1_device->tick_target = ticks_step;
-    //(stepper_motor_device_t *)motor_1_device->tick_target = ticks_step;
-
-    //xTaskCreatePinnedToCore(&task_stepper_control, "stepper_control", 2048, NULL, 5, NULL, 1);
-
-    // SAVE ME FOR AR 6115 INIT
-    /*
-    ar6115e_init(spektrum_handler);
-    ar6115e_add_channel(THROTTLE, GPIO_NUM_27);
-    ar6115e_add_channel(AILERON, GPIO_NUM_14);
-    ar6115e_start();*/
-
-/*
-    // SAVE FOR IMU INIT!!!
-       // Init i2c
-       i2c_init(22, 21);
-
-       // Make sure everything is up and ready
-       delay_ms(250);
-
-       // Begin IMU Setup
-       ESP_LOGI(tag, "MPU9250 Initializing...\n");
-       // Call imu.begin() to verify communication and initialize
-       if (mpu_9250_begin() != INV_SUCCESS)
-       {
-           ESP_LOGE(tag, "Error Initializing MPU9250 IMU.\n");
-         while (1) // Cannot Continue.  Loop Forever with delay a bit
-         {
-               delay(5000);
-         }
-       }
-
-       inv_error_t error = mpu_9250_dmp_begin(DMP_FEATURE_6X_LP_QUAT | // Enable 6-axis quat
-                    DMP_FEATURE_GYRO_CAL, // Use gyro calibration
-                   CONFIG_MPU9250_DMP_RATE); // Set DMP FIFO rate to 200 Hz
-       // DMP_FEATURE_LP_QUAT can also be used. It uses the
-       // accelerometer in low-power mode to estimate quat's.
-       // DMP_FEATURE_LP_QUAT and 6X_LP_QUAT are mutually exclusive
-       // TOOD: Check for error
-       ESP_LOGI(tag, "MPU9250 Initialized: %d\n", error);
-*/
-
-
-
-
-   // xTaskCreatePinnedToCore(&task_stepper_control2, "imuReadTask2", 2048, NULL, 5, NULL, 0);
+    // Start it up!
+    qrobot_start();
 
     //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
-
-   // xTaskCreate(&task_adc_test, "adcTask", 2048, NULL, 5, NULL);
-
-  //  stepper_control_set_speed(2000);
 
     /*
     ledc_timer_config_t ledc_timer = {

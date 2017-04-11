@@ -22,6 +22,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -29,6 +32,7 @@
 #include "esp_log.h"
 
 #include "utils/utils.h"
+#include "image_processing/image_processing.h"
 #include "sockets/socket_server.h"
 #include "adns3080.h"
 
@@ -115,31 +119,15 @@ void adns3080_read_sensor(adns_3080_device_t *p)
 }
 void adns3080_read_frame(adns_3080_device_t *p)
 {
-  // ESP_LOGI(tag, "Frame read: %d", millis());
+	uint32_t start_read = millis();
+ // ESP_LOGI(tag, "Frame read: %d",start_read);
     write_register(ADNS3080_FRAME_CAPTURE, 0x83, p);
     delay_us(1510);
-    /*    read_register_data(ADNS3080_PIXEL_BURST, frame, frame_buffer_size, adns_devices[0]);
 
-     int i,j,k;
-     for(i=0, k=0; i<ADNS3080_PIXELS_Y; i++)
-     {
-     for(j=0; j<ADNS3080_PIXELS_X; j++, k++)
-     {
-     //ESP_LOGI(tag, asciiart(frame[k]));
-     //Serial.print(' ');
-
-     ESP_LOGI(tag, "Pixel: %d", frame[k]);
-     }
-     //Serial.println();
-     ESP_LOGI(tag, ",\n");
-     }*/
-    // gpio_set_level(p->cs_pin, 0);
-    // Read in pixel data.  Not sure why burst is not working
-
+   //read_register_data(ADNS3080_PIXEL_BURST, frame, frame_buffer_size, adns_devices[0]);
     bool is_first_pixel = true;
-    int k = 0;
-    for (uint8_t i = 0; i < ADNS3080_PIXELS_Y; i++) {
-        for (uint8_t j = 0; j < ADNS3080_PIXELS_X; j++) {
+    for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++) {
+        for (uint8_t x = 0; x < ADNS3080_PIXELS_X; x++) {
             uint8_t reg_value = read_register(ADNS3080_FRAME_CAPTURE, p);
             if (is_first_pixel && !(reg_value & 0x40)) {
                 ESP_LOGE(tag, "ERROR: Failed to find first pixel.  Resetting device...");
@@ -149,32 +137,81 @@ void adns3080_read_frame(adns_3080_device_t *p)
             is_first_pixel = false;
             uint8_t pixel = (reg_value & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
 
-            // Threshold and Binarize Pixel
+            // Threshold and Binarize Pixel and Reorder image
             pixel = pixel < 50 ? 1 : 0;
-            frame[k++] = pixel;
-
-            ///frame[k++] = pixel;
-            //printf("%c", asciiart(pixel));
-           // printf("%d", pixel);
-            //if (j != ADNS3080_PIXELS_X - 1)
-              //  printf(",");
+            frame[ADNS3080_PIXELS_X * (ADNS3080_PIXELS_X - x) + (ADNS3080_PIXELS_Y - y)] = pixel;
         }
-       // printf("\n");
     }
 
     printf("\n--------------------------------------------------\n");
     for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++) {
         for (uint8_t x = 0; x < ADNS3080_PIXELS_X; x++) {
-            printf("%d", frame[ADNS3080_PIXELS_X * x + y]);
+            printf("%d", frame[ADNS3080_PIXELS_Y * y + x]);
             if (x != ADNS3080_PIXELS_X - 1)
                 printf(",");
         }
         printf("\n");
     }
     printf("--------------------------------------------------\n\n");
-   // ESP_LOGI(tag, "Frame end: %d", millis());
+   // ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 }
+bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
+{
+	uint32_t start_read = millis(); // For profiling
+   // ESP_LOGI(tag, "Frame read: %d",start_read);
 
+    // Start Frame Capture
+    write_register(ADNS3080_FRAME_CAPTURE, 0x83, p);
+
+    gpio_set_level(p->cs_pin, 0); // Toggle our own CS in software so we can support the mid transaction delays
+    delay_us(10); //
+    uint8_t tx_data;
+    tx_data = ADNS3080_PIXEL_BURST;
+    spi_transfer(&tx_data, 0, 1, p->spi_device);    // Do write transaction
+
+    delay_us(50); // T_srad delay of 50 us
+
+    uint8_t pixel_in;
+	bool started = false;
+	bool timed_out = false;
+	uint16_t timeout = 0;
+	for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++)
+	{
+		for (uint8_t x = 0; x < ADNS3080_PIXELS_X;)
+		{
+			spi_transfer(0, &pixel_in, 1, p->spi_device); // Read in a pixel
+			delay_us(10);
+			if (started == false) {
+				// is it the first?
+				if (pixel_in & 0x40) { // Got first pixel
+					started = true;
+				}
+				else {
+					timeout++;
+					if(timeout == 100) // Be patient for 100 reads
+					{
+						ESP_LOGI(tag, "Timed out reading frame capture data from ADNS-3080");
+						timed_out = true;
+						break;
+					}
+				}
+			}
+			if(started == true) {
+				uint8_t pixel_out = (pixel_in & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
+				pixel_out = pixel_out < 20 ? 1 : 0; // Threshold and Binarize Pixel and Reorder image
+				frame_out->data[ADNS3080_PIXELS_X * (ADNS3080_PIXELS_X - (x+1)) + (ADNS3080_PIXELS_Y - y - 1)] = pixel_out; // Copy into frame buffer
+				x++; // Increment counter here since is conditionally dependent
+			}
+		}
+		if(timed_out) break;
+	}
+    gpio_set_level(p->cs_pin, 1); // Toggle our own CS in software so we can support the mid transaction delays
+   if(timed_out)
+	   return false;
+
+   return true;
+    // ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
+}
 
 // Read Task
 void task_adns3080_reader_task(void *ignore)
@@ -185,8 +222,8 @@ void task_adns3080_reader_task(void *ignore)
     while (1) {
 
 #if defined(CONFIG_ADNS3080_ENABLE_FRAME_CAPTURE)
-        adns3080_read_frame(adns_devices[0]);
-        vTaskDelay(CONFIG_ADNS3080_FRAME_CAPTURE_UPDATE_PERIOD/portTICK_PERIOD_MS);
+       // adns3080_read_frame_burst(adns_devices[0], frame);
+       // vTaskDelay(CONFIG_ADNS3080_FRAME_CAPTURE_UPDATE_PERIOD/portTICK_PERIOD_MS);
 #else
         adns3080_read_sensor(adns_devices[0]);
         adns_devices[0]->x += adns_devices[0]->motion_buf.dx;
@@ -231,7 +268,6 @@ void task_adns3080_socket_optical_flow_debug(void *ignore)
     while (1) {
         char str[80];
         // TODO: Mutex Here or does volatile work here?
-        //float a_sens_inv = 1.0 / _aSense;
         sprintf(str, "SENSOR DATA\n");
 
         //ESP_LOGI(tag, "%s",str);
@@ -296,7 +332,7 @@ esp_err_t adns_3080_init(adns_3080_device_t *device)
     adns_devices[0] = device;
 
     // SUCCESS:  Now start required task/services
-    xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 4096, NULL, 3, NULL);
+    // xTaskCreate(&task_adns3080_reader_task, "adns3080_task", 4096, NULL, 3, NULL);
 
 #if defined(CONFIG_ADNS3080_USE_FRAME_DEBUG_SERVICE)
         frame_sock = (socket_device_t *) malloc(sizeof(socket_device_t));

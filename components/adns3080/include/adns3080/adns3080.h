@@ -25,6 +25,9 @@
 #ifndef ADNS_3080_H_
 #define ADNS_3080_H_
 
+
+#include "image_processing/image_processing.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -142,6 +145,12 @@ void adns_3080_apply(adns_3080_device_t device);
  */
 void adns_3080_clear(adns_3080_device_t device);
 
+/**
+ * @brief Write registers values to AMIS-30543
+ * @param device: Target ADNS-3080 device
+ * @param device: Output frame
+ */
+bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out);
 
 #ifdef __cplusplus
 }

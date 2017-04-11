@@ -28,6 +28,9 @@
 #include <string.h>
 #include <esp_log.h>
 
+#include "soc/spi_reg.h"
+#include "soc/spi_struct.h"
+
 #include "spi.h"
 
 static const char *TAG = "spi";
@@ -107,4 +110,3 @@ esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx
     ret = spi_device_transmit(spi_dev, &trans_desc);  //Transmit!
     return ret;
 }
-
