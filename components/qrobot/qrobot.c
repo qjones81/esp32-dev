@@ -547,10 +547,11 @@ void qrobot_line_follower_task(void *ignore) {
         ESP_LOGI(tag, "Blobs Detected: %d", num_blobs);
 
         // Compute moments/centroids
-        calculate_local_moments(image_blobs, num_blobs, &image_moments);
+        calculate_local_moments(image_blobs, &image_moments);
         for (int i = 0; i < VECTOR_TOTAL(image_moments); i++) {
         	image_moment_t *M = VECTOR_GET(image_moments, image_moment_t *, i);
 
+        	//TODO: Get score for each moment.  Based on Moment area, centroid distance to center, centroid distance to previous
 			if (M->m00 > 40) {
 				uint32_t cx = (uint32_t) ((float) M->m10 / M->m00);
 				uint32_t cy = (uint32_t) ((float) M->m01 / M->m00);
@@ -583,6 +584,7 @@ void qrobot_line_follower_task(void *ignore) {
 
        // ESP_LOGI(tag, "Control signal: %.2f/%d", -controller_output_map[LINE_FOLLOWER_CONTROLLER].w, M.m00);
 
+        vector_free(&image_moments);
 		ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 		last_time = millis();
 		vTaskDelay(1000 / portTICK_PERIOD_MS); // 10 hz
@@ -590,6 +592,7 @@ void qrobot_line_follower_task(void *ignore) {
     vTaskDelete(NULL);
 }
 void qrobot_down_and_back_task(void *ignore)
+
 {
     ESP_LOGD(tag, ">> qrobot_down_and_back_task");
 

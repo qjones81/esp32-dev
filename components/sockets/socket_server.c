@@ -93,6 +93,7 @@ void socket_server_disconnect(socket_device_t *device)
 
 void socket_server_send_data(socket_device_t *device, uint8_t *data, size_t length)
 {
+    // TODO: This should be queue based
     if (socket_server_connected_count(device) == 0) { // No Connected clients.  Bail.
         return;
     }

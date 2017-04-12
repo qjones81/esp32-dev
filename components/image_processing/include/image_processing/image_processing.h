@@ -77,7 +77,7 @@ image_moment_t calculate_moments(image_t *_inimage);
  * @param num_blobs: How many blobs in image.  Could be auto calced by traversing array first.  Trying to save some time
  * @param moments_out: Calculated moment vector
  */
-void calculate_local_moments(image_t *in_image, uint8_t num_blobs, vector *moments_out);
+void calculate_local_moments(image_t *in_image, vector *moments_out);
 
 /**
  * @brief Create image utility helper function

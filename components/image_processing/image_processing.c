@@ -1,8 +1,8 @@
 
 /*
- * wifi.c
+ * image_processing.c
  *
- *  Created on: Mar 7, 2017
+ *  Created on: April 10, 2017
  *      Author: qjones
  *
  * Copyright (c) <2017> <Quincy Jones - qjones@c4solutions.net/>
@@ -68,31 +68,31 @@ image_moment_t calculate_moments(image_t *in_image)
 	return ret_moments;
 }
 
-void calculate_local_moments(image_t *in_image, uint8_t num_blobs, vector *moments_out)
+void calculate_local_moments(image_t *in_image, vector *moments_out)
 {
 	if(in_image == NULL) {
 		ESP_LOGE(tag, "calculate_local_moments: NULL Parameter passed for input image");
 		return;
 	}
 
-	for(int i = 1; i <= num_blobs; i++) // 1 indexed
-	{
-		image_moment_t *local_moment = malloc(sizeof(image_moment_t));
-		memset(local_moment, 0, sizeof(image_moment_t)); // Zero it out just in case
-		for (int y = 0; y < in_image->height; y++) {
-			for (int x = 0; x < in_image->width; x++) {
-				if (in_image->data[in_image->height * y + x] == i) {
-					local_moment->m00 += 1; //sum(X,Y) of x^0*y^0
-					local_moment->m10 += x; //sum(X,Y) of x^1*y^0
-					local_moment->m01 += y; //sum(X,Y) of x^0*y^1
-					local_moment->m11 += (x * y); //sum(X,Y) of x^1*y^1
-				}
-			}
-		}
-
-		ESP_LOGI(tag, "Adding Moment: %d", i);
-		vector_add(moments_out, local_moment); // Add to output vector
-	}
+	image_moment_t* blob_moments[32]; // Support 32 for now.  Needs to be a parameter of some sort
+	memset(&blob_moments, 0, sizeof(image_moment_t *));
+    for (int y = 0; y < in_image->height; y++) {
+        for (int x = 0; x < in_image->width; x++) {
+            uint8_t blob_id = in_image->data[in_image->height * y + x];
+            if (blob_moments[blob_id] == NULL) {
+                image_moment_t *moment = malloc(sizeof(image_moment_t));
+                memset(moment, 0, sizeof(image_moment_t)); // Zero it out just in case
+                vector_add(moments_out, moment); // Add to output vector
+                blob_moments[blob_id] = moment;
+                ESP_LOGI(tag, "Adding Moment: %d", blob_id);
+            }
+            blob_moments[blob_id]->m00 += 1; //sum(X,Y) of x^0*y^0
+            blob_moments[blob_id]->m10 += x; //sum(X,Y) of x^1*y^0
+            blob_moments[blob_id]->m01 += y; //sum(X,Y) of x^0*y^1
+            blob_moments[blob_id]->m11 += (x * y); //sum(X,Y) of x^1*y^1
+        }
+    }
 }
 
 void create_image(uint32_t width, uint32_t height, uint8_t depth, image_t **out_image)
