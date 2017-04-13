@@ -157,6 +157,7 @@ void adns3080_read_frame(adns_3080_device_t *p)
 }
 bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
 {
+
 	uint32_t start_read = millis(); // For profiling
    // ESP_LOGI(tag, "Frame read: %d",start_read);
 
@@ -175,18 +176,21 @@ bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
 	bool started = false;
 	bool timed_out = false;
 	uint16_t timeout = 0;
+	uint16_t first_pix = 0;
 	for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++)
 	{
 		for (uint8_t x = 0; x < ADNS3080_PIXELS_X;)
 		{
 			spi_transfer(0, &pixel_in, 1, p->spi_device); // Read in a pixel
-			delay_us(10);
+			//delay_us(10);
 			if (started == false) {
 				// is it the first?
 				if (pixel_in & 0x40) { // Got first pixel
 					started = true;
+					printf("First Pixel: %d\n", first_pix);
 				}
 				else {
+					first_pix++;
 					timeout++;
 					if(timeout == 100) // Be patient for 100 reads
 					{
@@ -209,8 +213,66 @@ bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
    if(timed_out)
 	   return false;
 
+   ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
    return true;
-    // ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
+    //
+	/*uint32_t start_read = millis(); // For profiling
+   // ESP_LOGI(tag, "Frame read: %d",start_read);
+
+    // Start Frame Capture
+    write_register(ADNS3080_FRAME_CAPTURE, 0x83, p);
+
+    gpio_set_level(p->cs_pin, 0); // Toggle our own CS in software so we can support the mid transaction delays
+    delay_us(1510); //
+    uint8_t tx_data;
+    tx_data = ADNS3080_PIXEL_BURST;
+    spi_transfer(&tx_data, 0, 1, p->spi_device);    // Do write transaction
+
+    delay_us(50); // T_srad delay of 50 us
+
+    uint8_t pixel_in;
+    uint8_t row_in[2000];
+	bool found_start = false;
+	uint16_t timeout = 0;
+	int offset = 0;
+	memset(&row_in, 0, 2000 * sizeof(uint8_t));
+
+	spi_transfer(0, row_in, 2000, p->spi_device); // Read in a pixel
+	gpio_set_level(p->cs_pin, 1); // Toggle our own CS in software so we can support the mid transaction delays
+
+//	ESP_LOGI(tag, "Start");
+	for (int i = 0; i < 2000; i++)
+	{
+		//ESP_LOGI(tag, "Test pixel: %d", (row_in[i] & 0x3f) << 2);
+		if (row_in[i] & 0x40) { // Got first pixel
+			ESP_LOGI(tag, "First pixel: %d/%d", i, (row_in[i] & 0x3f) << 2);
+			offset = i;
+			found_start = true;
+			break;
+		}
+	}
+	//ESP_LOGI(tag, "End");
+
+
+	if(!found_start)
+		return false;
+
+	int i = 0;
+	for (uint8_t y = 0; y < ADNS3080_PIXELS_Y; y++) {
+		for (uint8_t x = 0; x < ADNS3080_PIXELS_X; x++) {
+			uint8_t pixel_out = (row_in[offset++] & 0x3f) << 2; // Lower 6 bits contain data.  Clear upper 2 bits and Convert to 0-255 standard grayscale
+			pixel_out = pixel_out < 50 ? 1 : 0; // Threshold and Binarize Pixel and Reorder image
+			frame_out->data[ADNS3080_PIXELS_X * (ADNS3080_PIXELS_X - (x + 1)) + (ADNS3080_PIXELS_Y - y - 1)] = pixel_out; // Copy into frame buffer
+		}
+	}
+
+	//spi_transfer(0, row_in, 900, p->spi_device); // Read in a pixel
+	//gpio_set_level(p->cs_pin, 1); // Toggle our own CS in software so we can support the mid transaction delays
+
+
+	ESP_LOGI(tag, "Frame end ADNS: %d", millis() - start_read);
+	return true;*/
+
 }
 
 // Read Task

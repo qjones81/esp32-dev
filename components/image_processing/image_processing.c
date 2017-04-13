@@ -41,7 +41,9 @@ typedef struct label_node {
 
 } label_node_t;
 
-
+static uint8_t *label_image = NULL;
+//static image_moment_t* blob_moments[32] = {NULL};
+//static bool moment_alloc = false;
 // Reference: http://aishack.in/tutorials/image-moments/
 image_moment_t calculate_moments(image_t *in_image)
 {
@@ -75,22 +77,31 @@ void calculate_local_moments(image_t *in_image, vector *moments_out)
 		return;
 	}
 
-	image_moment_t* blob_moments[32]; // Support 32 for now.  Needs to be a parameter of some sort
-	memset(&blob_moments, 0, sizeof(image_moment_t *));
-    for (int y = 0; y < in_image->height; y++) {
+	static image_moment_t blob_moments[32];
+	//image_moment_t* blob_moments[32]; // Support 32 for now.  Needs to be a parameter of some sort
+	memset(&blob_moments, 0, 32 * sizeof(image_moment_t));
+
+
+    bool used_id[32];
+	for (int i = 0; i < 32; i++) {
+		used_id[i] = false;
+		//memset(&blob_moments[i], 0, sizeof(image_moment_t)); // Zero it out just in case
+	}
+
+	for (int y = 0; y < in_image->height; y++) {
         for (int x = 0; x < in_image->width; x++) {
             uint8_t blob_id = in_image->data[in_image->height * y + x];
-            if (blob_moments[blob_id] == NULL) {
-                image_moment_t *moment = malloc(sizeof(image_moment_t));
-                memset(moment, 0, sizeof(image_moment_t)); // Zero it out just in case
-                vector_add(moments_out, moment); // Add to output vector
-                blob_moments[blob_id] = moment;
-                ESP_LOGI(tag, "Adding Moment: %d", blob_id);
+            if(blob_id == 0) continue; // Background pixel
+
+            if(used_id[blob_id] == false) {
+            	vector_add(moments_out, &blob_moments[blob_id]); // Add to output vector
+            	used_id[blob_id] = true;
             }
-            blob_moments[blob_id]->m00 += 1; //sum(X,Y) of x^0*y^0
-            blob_moments[blob_id]->m10 += x; //sum(X,Y) of x^1*y^0
-            blob_moments[blob_id]->m01 += y; //sum(X,Y) of x^0*y^1
-            blob_moments[blob_id]->m11 += (x * y); //sum(X,Y) of x^1*y^1
+
+			blob_moments[blob_id].m00 += 1; //sum(X,Y) of x^0*y^0
+			blob_moments[blob_id].m10 += x; //sum(X,Y) of x^1*y^0
+			blob_moments[blob_id].m01 += y; //sum(X,Y) of x^0*y^1
+			blob_moments[blob_id].m11 += (x * y); //sum(X,Y) of x^1*y^1
         }
     }
 }
@@ -101,7 +112,8 @@ void create_image(uint32_t width, uint32_t height, uint8_t depth, image_t **out_
 	image->width = width;
 	image->height = height;
 	image->depth = depth;
-	image->data = malloc(image->width * image->height * image->depth);
+	image->data = malloc(image->width * image->height * depth);
+	memset(image->data, 0, image->width * image->height * depth);
 	*out_image = image;
 
 }
@@ -115,7 +127,7 @@ void mask_image(image_t *in_image, mask_region_t image_mask, uint32_t value, ima
 	else if(out_mask->depth != in_image->depth ||
 			out_mask->width != in_image->width ||
 			out_mask->height != in_image->height) {
-		ESP_LOGE(tag, "Mask/Image dimension mismatch");
+		ESP_LOGE(tag, "Mask/Image dimension mismatch: %d/%d and %d/%d and %d/%d", out_mask->depth, in_image->depth,out_mask->width, in_image->width,out_mask->height,in_image->height);
 				return;
 	}
 	for(int y = 0; y < in_image->height; y++)
@@ -141,7 +153,9 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 	uint32_t height_labels = in_image->height + 1; // Pad it by 1 pixel
 
 	// Using uint8 here, so 255 max labels.
-	uint8_t *label_image = malloc(width_labels * height_labels * sizeof(uint8_t));
+	if(label_image == NULL) {
+		label_image = malloc(width_labels * height_labels * sizeof(uint8_t));
+	}
 
 	// Create label component array with padding for edge cases
 	label_node_t labels[32]; // 32 max labels for now
@@ -188,6 +202,7 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 		}
 	}
 
+	uint8_t max_label = 0;
 	// Second Pass for label cleanup
 	for (int y = 0, y_label = 1; y < out_labeled->height; y++, y_label++) { // Start at one since we are padded for labels
 		for (int x = 0, x_label = 1; x < out_labeled->width; x++, x_label++) {
@@ -198,13 +213,20 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 				node = node->parent;
 			}
 			out_labeled->data[out_labeled->height * y + x] = equivalent_label;
-			num_components = max(equivalent_label, num_components);
+			max_label = max(max_label, equivalent_label);
 		}
 	}
-	ESP_LOGI(tag, "Found: %d components", num_components);
+
+	// TODO:  Needs to be way better.  Out of time for now and this works good enough.  But should be able to solve this in the main loops
+	for(int i = 1; i <= max_label; i++) {
+		if(labels[i].parent == NULL) {
+			num_components++;
+		}
+	}
+	//ESP_LOGI(tag, "Found: %d components", num_components);
 
 	// Free Memory
-	free(label_image);
+	//free(label_image);
 
 	// Return
 	return num_components;

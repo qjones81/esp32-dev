@@ -66,7 +66,7 @@ esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi
 	dev_config.clock_speed_hz = CLK_frequency;
 	dev_config.spics_io_num = CS_pin;
 	dev_config.flags = 0;
-	dev_config.queue_size = 1;
+	dev_config.queue_size = 5;
 	dev_config.pre_cb = NULL;
 	dev_config.post_cb = NULL;
 
@@ -86,6 +86,24 @@ esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi
 	trans_desc.flags = 0;
 	trans_desc.length = length * 8;
 	trans_desc.rxlength = 0;
+	trans_desc.tx_buffer = tx_data;
+	trans_desc.rx_buffer = rx_data;
+
+	ret = spi_device_transmit(spi_dev, &trans_desc);  //Transmit!
+	return ret;
+}
+
+esp_err_t spi_transfer_test(const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_device_handle_t spi_dev)
+{
+	esp_err_t ret; // Return Error Code
+
+	spi_transaction_t trans_desc;
+	memset(&trans_desc, 0, sizeof(trans_desc));
+	trans_desc.address = 0;
+	trans_desc.command = 0;
+	trans_desc.flags = 0;
+	trans_desc.length = length * 8;
+	trans_desc.rxlength = rx_length * 8;
 	trans_desc.tx_buffer = tx_data;
 	trans_desc.rx_buffer = rx_data;
 

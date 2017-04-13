@@ -122,7 +122,7 @@ float max_control_output = 500.0f;
 float control_output = 0.0f;
 float goto_goal_gain = 1.0f;
 
-uint16_t max_throttle = 100; //200
+uint16_t max_throttle = 150; //200
 uint16_t max_steering = 50; // 50
 uint16_t steering_dead_zone = 40;
 uint16_t throttle_dead_zone = 40;
@@ -145,9 +145,9 @@ float wheel_base = .151f; // 151 mm
 float wheel_steps_per_m_1 = 11317.6848421; // steps per m (Right)
 float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 
-float angle_offset = -2.0f; // Offset for hardware issues
+float angle_offset = -2.2f; // Offset for hardware issues
 
-uint16_t motor_current = 1000; // Stepper motor current in mA
+uint16_t motor_current = 1500; // Stepper motor current in mA
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
 uint8_t microsteps = 16;
 //end save
@@ -488,9 +488,45 @@ void qrobot_line_follower_task(void *ignore) {
     ESP_LOGD(tag, ">> qrobot_line_follower_task");
 
 
+//    image_t *image_frame_test = NULL;
+//    uint8_t test_image[900] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
+//    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,
+//    1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,
+//    1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+//    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+//
+//    create_image(30, 30, sizeof(uint8_t), &image_frame_test);
+//    memcpy(image_frame_test->data, &test_image, 30 * 30 * sizeof(uint8_t));
+
     // Create image
     int img_width = 30;
     int img_height = 30;
+    int img_center = img_width / 2;
     image_t *image_frame = NULL;
     image_t *image_frame_masked = NULL;
     image_t *image_blobs = NULL;
@@ -514,6 +550,13 @@ void qrobot_line_follower_task(void *ignore) {
 
     uint32_t settle_time = 0;
     uint32_t last_time = 0;
+    uint32_t cx_prev = img_center; // Assume center for start
+    uint32_t cx_current = img_center;
+    uint32_t cy_current = img_center;
+    bool valid_control_output = false;
+
+
+    ESP_LOGI(tag, "Depth: %d", sizeof(uint8_t));
 
     while (1) {
 		vector image_moments;
@@ -535,6 +578,12 @@ void qrobot_line_follower_task(void *ignore) {
         	continue;
         }
 
+       print_image(image_frame);
+
+		// Now debug it
+		vTaskDelay(250 / portTICK_PERIOD_MS);
+		continue;
+
         // Mask it to center of view top/bottom
         mask_image(image_frame, image_mask_upper, 0, image_frame_masked);
         mask_image(image_frame_masked, image_mask_lower, 0, image_frame_masked);
@@ -542,12 +591,14 @@ void qrobot_line_follower_task(void *ignore) {
         //mask_image(image_frame, image_mask_lower, 0, image_frame_masked);
 
         // Look for connected images
-        uint8_t num_blobs = image_connected_components(image_frame_masked, image_blobs);
+        image_connected_components(image_frame_masked, image_blobs);
 
-        ESP_LOGI(tag, "Blobs Detected: %d", num_blobs);
-
+        //ESP_LOGI(tag, "task stack: %d", uxTaskGetStackHighWaterMark(NULL));
         // Compute moments/centroids
         calculate_local_moments(image_blobs, &image_moments);
+        int max_blob_score = INT32_MIN;
+
+        valid_control_output = false;
         for (int i = 0; i < VECTOR_TOTAL(image_moments); i++) {
         	image_moment_t *M = VECTOR_GET(image_moments, image_moment_t *, i);
 
@@ -556,38 +607,60 @@ void qrobot_line_follower_task(void *ignore) {
 				uint32_t cx = (uint32_t) ((float) M->m10 / M->m00);
 				uint32_t cy = (uint32_t) ((float) M->m01 / M->m00);
 
-				// Debug tracking point
-				image_set_pixel(image_frame_masked, cx, cy, 88);
-
-				// Update PIDS
-				line_following_pid.set_point = img_width * 0.5;
-				line_following_pid.input = cx;
-				line_following_pid.output_max = 0.8f;
-				line_following_pid.output_min = -0.8f;
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = true;
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = -pid_compute(&line_following_pid);
-			} else {
-				settle_time += (millis() - last_time);
-				if (settle_time >= 500) {
-					controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = false;
-					controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
-					controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
-				} else {
-					controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.1f;
+				// Weight the distance to the previous control point most
+				int tmp_blob_score = M->m00 - abs(cx - img_center) - (15 * abs(cx - cx_prev));
+				if(tmp_blob_score > max_blob_score) {
+					max_blob_score = tmp_blob_score;
+					cx_current = cx;
+					cy_current = cy;
 				}
+				//ESP_LOGI(tag, "Temp: %d to %d (MAX)", M->m00, (50 * abs(cx - cx_prev)));
+				//ESP_LOGI(tag, "Scores: %d to %d (MAX)", tmp_blob_score, max_blob_score);
+				valid_control_output = true;
 			}
+			//free(M); // Clear it
         }
+
+		if (valid_control_output) {
+
+			//ESP_LOGI(tag, "(%d,%d)", cx_current, cy_current);
+			// Debug tracking point
+			image_set_pixel(image_frame_masked, cx_current, cy_current, 88);
+
+			// Update PIDS
+			line_following_pid.set_point = img_center;
+			line_following_pid.input = cx_current;
+			line_following_pid.output_max = 0.8f;
+			line_following_pid.output_min = -0.8f;
+			controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = true;
+			controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
+			controller_output_map[LINE_FOLLOWER_CONTROLLER].w = -pid_compute(&line_following_pid);
+
+			// Reset timeout
+			settle_time = 0;
+		} else { // Try to keep some momentum.  Really need some line hunting here
+			settle_time += (millis() - last_time);
+			if (settle_time >= 1000) {
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].enable = false;
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
+			} else {
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
+				//controller_output_map[LINE_FOLLOWER_CONTROLLER].w ;
+			}
+		}
+
+		cx_prev = cx_current;
+
+		ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 
         // Now debug it
         print_image(image_frame_masked);
 
-       // ESP_LOGI(tag, "Control signal: %.2f/%d", -controller_output_map[LINE_FOLLOWER_CONTROLLER].w, M.m00);
-
         vector_free(&image_moments);
-		ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
+
 		last_time = millis();
-		vTaskDelay(1000 / portTICK_PERIOD_MS); // 10 hz
+		vTaskDelay(1000 / portTICK_PERIOD_MS); // 5 hz
     }
     vTaskDelete(NULL);
 }
@@ -783,11 +856,11 @@ void qrobot_control_debug_service(void *ignore)
 			}
 			else if(!strncmp(data, "DANDB",5)) {
 				// Start task
-				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,4, NULL);
+				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,2, NULL);
 			}
 			else if(!strncmp(data, "LINE_FOLLOW",11)) {
 				// Start task
-				xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 4096, NULL,1, NULL);
+				xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL,2, NULL);
 			}
 			else if(!strncmp(data, "PERF_PARAMS", 11)) {
 				token = strtok(NULL, " ");
@@ -1538,7 +1611,7 @@ void qrobot_init()
 	if (qrobot_event_group == NULL) {
 		ESP_LOGE(tag, "Failed to create contorller event groups.\n");
 	}
-//
+
 //	// Setup queues
 //	navigation_waypoint_queue = xQueueCreate(1, sizeof(waypoint_t));
 //
@@ -1596,14 +1669,14 @@ void qrobot_start()
    robot_stable = false;
 
    // Start main controller task pin it with the steppers
-  // xTaskCreatePinnedToCore(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 6, NULL, 1);
+   //xTaskCreatePinnedToCore(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 5, NULL, 1);
 
    // Start odometry task
-  // xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 5, NULL);
+   //xTaskCreate(&qrobot_odometry_task, "qrobot_odometry", 2048, NULL, 4, NULL);
 
    // Start navigation task
- //  xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,4, NULL);
-   xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 4096, NULL,4, NULL);
+  // xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
+   xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 }
 
