@@ -35,27 +35,31 @@
 
 static const char *TAG = "spi";
 
-esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin)
+//esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin)
+//{
+//	esp_err_t ret;
+//	spi_nodma_bus_config_t buscfg={
+//	        .miso_io_num=MISO_pin,
+//	        .mosi_io_num=MOSI_pin,
+//	        .sclk_io_num=CLK_pin,
+//	        .quadwp_io_num=-1,
+//	        .quadhd_io_num=-1
+//	    };
+//
+//	ret = spi_bus_initialize(VSPI_HOST, &buscfg, 1);
+//
+//	return ret;
+//}
+esp_err_t spi_add_device(int8_t CS_pin, int8_t CS_ext_pin, int CLK_frequency, uint8_t SPI_Mode, spi_nodma_bus_config_t *bus_config, spi_nodma_device_handle_t *spi_dev)
 {
 	esp_err_t ret;
-	spi_bus_config_t buscfg={
-	        .miso_io_num=MISO_pin,
-	        .mosi_io_num=MOSI_pin,
-	        .sclk_io_num=CLK_pin,
-	        .quadwp_io_num=-1,
-	        .quadhd_io_num=-1
-	    };
 
-	ret = spi_bus_initialize(VSPI_HOST, &buscfg, 1);
-
-	return ret;
-}
-esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev)
-{
-	esp_err_t ret;
+	spi_nodma_bus_config_t buscfg = { .miso_io_num = VSPI_MISO, .mosi_io_num =
+			VSPI_MOSI, .sclk_io_num = VSPI_CLK, .quadwp_io_num = -1,
+			.quadhd_io_num = -1 };
 
 	// TODO: Send this as param probably...
-	spi_device_interface_config_t dev_config;
+	spi_nodma_device_interface_config_t dev_config;
 	dev_config.address_bits = 0;
 	dev_config.command_bits = 0;
 	dev_config.dummy_bits = 0;
@@ -65,21 +69,40 @@ esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi
 	dev_config.cs_ena_pretrans = 0;
 	dev_config.clock_speed_hz = CLK_frequency;
 	dev_config.spics_io_num = CS_pin;
+	dev_config.spics_ext_io_num = CS_ext_pin;
 	dev_config.flags = 0;
-	dev_config.queue_size = 5;
+	//dev_config.queue_size = 5;
 	dev_config.pre_cb = NULL;
 	dev_config.post_cb = NULL;
 
-	ret = spi_bus_add_device(VSPI_HOST, &dev_config, spi_dev);
+	ret = spi_nodma_bus_add_device(VSPI_HOST, &buscfg, &dev_config, spi_dev);
 
 	return ret;
 }
 
-esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev)
+esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev)
 {
 	esp_err_t ret; // Return Error Code
 
-	spi_transaction_t trans_desc;
+	spi_nodma_transaction_t trans_desc;
+	memset(&trans_desc, 0, sizeof(trans_desc));
+	trans_desc.address = 0;
+	trans_desc.command = 0;
+	trans_desc.flags = 0;
+	trans_desc.length = length * 8;
+	trans_desc.rxlength = length * 8;
+	trans_desc.tx_buffer = tx_data;
+	trans_desc.rx_buffer = rx_data;
+
+	ret = spi_nodma_transfer_data(spi_dev, &trans_desc);  //Transmit!
+	return ret;
+}
+
+esp_err_t spi_transfer_write(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev)
+{
+	esp_err_t ret; // Return Error Code
+
+	spi_nodma_transaction_t trans_desc;
 	memset(&trans_desc, 0, sizeof(trans_desc));
 	trans_desc.address = 0;
 	trans_desc.command = 0;
@@ -87,35 +110,36 @@ esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi
 	trans_desc.length = length * 8;
 	trans_desc.rxlength = 0;
 	trans_desc.tx_buffer = tx_data;
-	trans_desc.rx_buffer = rx_data;
+	trans_desc.rx_buffer = 0;
 
-	ret = spi_device_transmit(spi_dev, &trans_desc);  //Transmit!
+	ret = spi_nodma_transfer_data(spi_dev, &trans_desc);  //Transmit!
 	return ret;
 }
 
-esp_err_t spi_transfer_test(const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_device_handle_t spi_dev)
+
+esp_err_t spi_transfer_test(const uint8_t command, const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_nodma_device_handle_t spi_dev)
 {
 	esp_err_t ret; // Return Error Code
 
-	spi_transaction_t trans_desc;
+	spi_nodma_transaction_t trans_desc;
 	memset(&trans_desc, 0, sizeof(trans_desc));
 	trans_desc.address = 0;
-	trans_desc.command = 0;
+	trans_desc.command = command;
 	trans_desc.flags = 0;
 	trans_desc.length = length * 8;
 	trans_desc.rxlength = rx_length * 8;
 	trans_desc.tx_buffer = tx_data;
 	trans_desc.rx_buffer = rx_data;
+	ret = spi_nodma_transfer_data(spi_dev, &trans_desc);  //Transmit!
 
-	ret = spi_device_transmit(spi_dev, &trans_desc);  //Transmit!
 	return ret;
 }
 
-esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev)
+esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev)
 {
     esp_err_t ret; // Return Error Code
 
-    spi_transaction_t trans_desc;
+    spi_nodma_transaction_t trans_desc;
     memset(&trans_desc, 0, sizeof(trans_desc));
     trans_desc.address = 0;
     trans_desc.command = 0;
@@ -125,6 +149,6 @@ esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx
     trans_desc.tx_buffer = tx_data;
     trans_desc.rx_buffer = rx_data;
 
-    ret = spi_device_transmit(spi_dev, &trans_desc);  //Transmit!
+    ret = spi_nodma_transfer_data(spi_dev, &trans_desc);  //Transmit!
     return ret;
 }

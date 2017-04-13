@@ -96,7 +96,7 @@ typedef struct
     int32_t x;              // X Pos
     int32_t y;              // Y Pos
     motion_struct_t motion_buf;
-    spi_device_handle_t spi_device; // Device handle for spi communications
+    spi_nodma_device_handle_t spi_device; // Device handle for spi communications
 
 } adns_3080_device_t;
 

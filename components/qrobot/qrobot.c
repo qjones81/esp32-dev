@@ -221,6 +221,14 @@ typedef enum  {
 
 controller_output_t controller_output_map[CONTROLLER_TYPE_MAX];
 
+spi_nodma_bus_config_t buscfg={
+        .miso_io_num=VSPI_MISO,
+        .mosi_io_num=VSPI_MOSI,
+        .sclk_io_num=VSPI_CLK,
+        .quadwp_io_num=-1,
+        .quadhd_io_num=-1
+    };
+
 extern void qrobot_send_debug(char *format, ...);
 extern void qrobot_down_and_back_task(void *ignore);
 extern void qrobot_navigation_task(void *ignore);
@@ -556,7 +564,7 @@ void qrobot_line_follower_task(void *ignore) {
     bool valid_control_output = false;
 
 
-    ESP_LOGI(tag, "Depth: %d", sizeof(uint8_t));
+   // ESP_LOGI(tag, "Depth: %d", sizeof(uint8_t));
 
     while (1) {
 		vector image_moments;
@@ -574,7 +582,7 @@ void qrobot_line_follower_task(void *ignore) {
 
         // Get Image Frame
         if(!adns3080_read_frame_burst(adns_sensor, image_frame)) {
-        	vTaskDelay(20 / portTICK_PERIOD_MS); // Smaller delay.  Try to read again fairly quickly
+        	vTaskDelay(2000 / portTICK_PERIOD_MS); // Smaller delay.  Try to read again fairly quickly
         	continue;
         }
 
@@ -660,7 +668,7 @@ void qrobot_line_follower_task(void *ignore) {
         vector_free(&image_moments);
 
 		last_time = millis();
-		vTaskDelay(1000 / portTICK_PERIOD_MS); // 5 hz
+		vTaskDelay(5000 / portTICK_PERIOD_MS); // 5 hz
     }
     vTaskDelete(NULL);
 }
@@ -1434,13 +1442,33 @@ void qrobot_rc_input_handler(pulse_event_t event)
 
 void qrobot_init_adns()
 {
+	// Device configuration
+	spi_nodma_device_interface_config_t dev_config;
+	dev_config.address_bits = 0;
+	dev_config.command_bits = 0;
+	dev_config.dummy_bits = 0;
+	dev_config.mode = 3;
+	dev_config.duty_cycle_pos = 0;
+	dev_config.cs_ena_posttrans = 0;
+	dev_config.cs_ena_pretrans = 0;
+	dev_config.clock_speed_hz = 2000000;
+	dev_config.spics_io_num = GPIO_NUM_2;
+	dev_config.spics_ext_io_num = -1;
+	dev_config.flags = 0;
+	//dev_config.queue_size = 5;
+	dev_config.pre_cb = NULL;
+	dev_config.post_cb = NULL;
+
+	// Init Memory
     adns_sensor = (adns_3080_device_t *) malloc(sizeof(adns_3080_device_t));
 
     // Check for allocation blah blah
     // 2Mhz, Mode 3
     ESP_LOGI(tag, "Adding ADNS-3080 to SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_add_device(-1, 2000000, 3, &adns_sensor->spi_device));
+    esp_err_t ret = spi_nodma_bus_add_device(VSPI_HOST, &buscfg, &dev_config, &adns_sensor->spi_device);
+    assert(ret==ESP_OK);
     ESP_LOGI(tag, "Successfully added ADNS-3080.\n");
+
 
     // Setup Pins
     adns_sensor->reset_pin = GPIO_NUM_25;
@@ -1480,6 +1508,24 @@ void qrobot_init_mpu9250()
 void qrobot_init_amis30543_drivers()
 {
     // TODO: Update CS pins to new board
+
+	// Device configuration
+	spi_nodma_device_interface_config_t dev_config;
+	dev_config.address_bits = 0;
+	dev_config.command_bits = 0;
+	dev_config.dummy_bits = 0;
+	dev_config.mode = 0;
+	dev_config.duty_cycle_pos = 0;
+	dev_config.cs_ena_posttrans = 0;
+	dev_config.cs_ena_pretrans = 0;
+	dev_config.clock_speed_hz = 1000000;
+	dev_config.spics_io_num = GPIO_NUM_5;
+	dev_config.spics_ext_io_num = -1;
+	dev_config.flags = 0;
+	//dev_config.queue_size = 5;
+	dev_config.pre_cb = NULL;
+	dev_config.post_cb = NULL;
+
     // Init Memory
     amis_motor_1 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
@@ -1487,12 +1533,14 @@ void qrobot_init_amis30543_drivers()
     // Left
     // 10Mhz, Mode 0
     ESP_LOGI(tag, "Adding AMIS-30543 (1) to SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_5, 1000000, 0, &amis_motor_1->spi_device)); // TODO: Pass In Values
+    esp_err_t ret = spi_nodma_bus_add_device(VSPI_HOST, &buscfg, &dev_config, &amis_motor_1->spi_device);
+    assert(ret==ESP_OK);
     ESP_LOGI(tag, "Successfully added AMIS-30543 (1).\n");
 
     delay_ms(100);
 
     ESP_LOGI(tag, "Initializing AMIS-30543 (1)...\n");
+    spi_nodma_device_select(amis_motor_1->spi_device, 1);
     amis_30543_init(amis_motor_1); // Init
     amis_30543_reset(amis_motor_1); // Reset
     amis_30543_set_current(amis_motor_1, motor_current); // Set current limit
@@ -1503,18 +1551,22 @@ void qrobot_init_amis30543_drivers()
     // Verify Settings
     bool verified = amis_30543_verify(amis_motor_1);
     ESP_LOGI(tag, "AMIS-30543 Initialized (1) %d.\n", verified);
+    spi_nodma_device_deselect(amis_motor_1->spi_device);
 
     // Right
     amis_motor_2 = (amis_30543_device_t *) malloc(sizeof(amis_30543_device_t));
     // TODO: Error check for allocation
 
+    dev_config.spics_io_num = GPIO_NUM_4;
     // 10Mhz, Mode 0
     ESP_LOGI(tag, "Adding AMIS-30543 (2) to SPI Bus...\n");
-    ESP_ERROR_CHECK(spi_add_device(GPIO_NUM_4, 1000000, 0, &amis_motor_2->spi_device)); // TODO: Pass In Values
+    ret = spi_nodma_bus_add_device(VSPI_HOST, &buscfg, &dev_config, &amis_motor_2->spi_device);
+    assert(ret==ESP_OK);
     ESP_LOGI(tag, "Successfully added AMIS-30543 (2).\n");
 
     delay_ms(100);
 
+    spi_nodma_device_select(amis_motor_2->spi_device, 1);
     ESP_LOGI(tag, "Initializing AMIS-30543 (2)...\n");
     amis_30543_init(amis_motor_2); // Init
     amis_30543_reset(amis_motor_2); // Reset
@@ -1526,6 +1578,7 @@ void qrobot_init_amis30543_drivers()
     // Verify Settings
     verified = amis_30543_verify(amis_motor_2);
     ESP_LOGI(tag, "AMIS-30543 Initialized (2) %d.\n", verified);
+    spi_nodma_device_deselect(amis_motor_2->spi_device);
 }
 
 void qrobot_init_stepper_motors()
@@ -1547,9 +1600,9 @@ void qrobot_init()
 	ESP_LOGI(tag, "QRobot by Quincy Jones v1.0.  USE AT YOUR OWN RISK!\n\n");
 
 	// Init SPI Bus
-	ESP_LOGI(tag, "Initializing SPI Bus...\n");
-	ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
-	ESP_LOGI(tag, "SPI Bus Initialized.\n");
+	//ESP_LOGI(tag, "Initializing SPI Bus...\n");
+	////ESP_ERROR_CHECK(spi_init(VSPI_MOSI, VSPI_MISO, VSPI_CLK)); // TODO: Pass In Values
+	//ESP_LOGI(tag, "SPI Bus Initialized.\n");
 
 	ESP_LOGI(tag, "Initializing Sensors...");
 
@@ -1668,6 +1721,7 @@ void qrobot_start()
    robot_shutdown = false;
    robot_stable = false;
 
+   adns3080_read_frame_burst(adns_sensor, 0);
    // Start main controller task pin it with the steppers
    //xTaskCreatePinnedToCore(&qrobot_controller_task, "qrobot_controller", 4096, NULL, 5, NULL, 1);
 
@@ -1676,7 +1730,7 @@ void qrobot_start()
 
    // Start navigation task
   // xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
-   xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
+   //xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 }
 

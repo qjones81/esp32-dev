@@ -30,7 +30,7 @@
 
 static const char *tag = "amis_30543";
 
-void write_reg(uint8_t address, uint8_t data, spi_device_handle_t device)
+void write_reg(uint8_t address, uint8_t data, spi_nodma_device_handle_t device)
 {
 	uint8_t tx_data[2];
 	uint8_t rx_data[2];
@@ -39,7 +39,7 @@ void write_reg(uint8_t address, uint8_t data, spi_device_handle_t device)
 	spi_transfer(tx_data, rx_data, 2, device);
 }
 
-uint8_t read_reg(uint8_t address, spi_device_handle_t device)
+uint8_t read_reg(uint8_t address, spi_nodma_device_handle_t device)
 {
     uint8_t tx_data[2];
     uint8_t rx_data[2];

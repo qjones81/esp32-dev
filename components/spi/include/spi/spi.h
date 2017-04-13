@@ -26,7 +26,7 @@
 #define SPI_H_
 
 #include <stdint.h>
-#include "driver/spi_master.h"
+#include "driver/spi_master_nodma.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -64,7 +64,7 @@ esp_err_t spi_init(uint8_t MOSI_pin, uint8_t MISO_pin, uint8_t CLK_pin);
  * @param SPI_Mode: SPI device transfer mode, (0, 1, 2 or 3)
  * @param spi_device_handle_t: Return reference for created SPI device
  */
-esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi_device_handle_t *spi_dev);
+esp_err_t spi_add_device(int8_t CS_pin, int8_t CS_ext_pin, int CLK_frequency, uint8_t SPI_Mode, spi_nodma_bus_config_t *bus_config, spi_nodma_device_handle_t *spi_dev);
 
 /**
  * @brief SPI Device transfer routine
@@ -73,9 +73,11 @@ esp_err_t spi_add_device(int8_t CS_pin, int CLK_frequency, uint8_t SPI_Mode, spi
  * @param length: Transmission length in bytes
  * @param spi_device_handle_t: Return reference for created SPI device
  */
-esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev);
+esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev);
 
-esp_err_t spi_transfer_test(const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_device_handle_t spi_dev);
+esp_err_t spi_transfer_write(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev);
+
+esp_err_t spi_transfer_test(const uint8_t command, const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_nodma_device_handle_t spi_dev);
 
 /**
  * @brief SPI Device read transfer routine
@@ -83,7 +85,7 @@ esp_err_t spi_transfer_test(const uint8_t *tx_data, uint8_t *rx_data, int length
  * @param length: Transmission length in bytes
  * @param spi_device_handle_t: Return reference for created SPI device
  */
-esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx_data, int length, spi_device_handle_t spi_dev);
+esp_err_t spi_read_transfer(uint8_t address, const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev);
 
 #ifdef __cplusplus
 extern "C"

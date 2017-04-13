@@ -12,10 +12,11 @@
 #include "spi/spi.h"
 #include "mpu9250_dmp/mpu_9250.h"
 #include "driver/adc.h"
+#include "driver/spi_master_nodma.h"
 #include "sharpir/sharpir.h"
 
-//#include "amis_30543/amis_30543.h"
-//#include "adns3080/adns3080.h"
+#include "amis_30543/amis_30543.h"
+#include "adns3080/adns3080.h"
 //#include "stepper/stepper.h"
 //#include "ar6115e/ar6115e.h"
 #include "utils/utils.h"
@@ -98,6 +99,7 @@ static char tag[] = "ROBOT_MAIN";
 void app_main(void)
 {
     nvs_flash_init();
+
 //    esp_err_t err = wifi_network_up();
 //    if(err != ESP_OK)
 //    {

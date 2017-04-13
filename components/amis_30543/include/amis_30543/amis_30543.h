@@ -41,7 +41,7 @@ typedef struct {
 	uint8_t cr2;    // Control register 3
 	uint8_t cr3;    // Control register 4
 	bool enable;
-	spi_device_handle_t spi_device; // Device handle for spi communications
+	spi_nodma_device_handle_t spi_device; // Device handle for spi communications
 
 } amis_30543_device_t;
 

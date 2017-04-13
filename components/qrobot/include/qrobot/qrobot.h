@@ -41,7 +41,7 @@ void qrobot_init();
  */
 void qrobot_start();
 
-
+void qrobot_stop();
 #ifdef __cplusplus
 }
 #endif
