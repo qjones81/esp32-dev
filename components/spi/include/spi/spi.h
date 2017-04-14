@@ -77,7 +77,7 @@ esp_err_t spi_transfer(const uint8_t *tx_data, uint8_t *rx_data, int length, spi
 
 esp_err_t spi_transfer_write(const uint8_t *tx_data, uint8_t *rx_data, int length, spi_nodma_device_handle_t spi_dev);
 
-esp_err_t spi_transfer_test(const uint8_t command, const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_nodma_device_handle_t spi_dev);
+esp_err_t spi_transfer_fast(const uint8_t command, const uint8_t *tx_data, uint8_t *rx_data, int length, int rx_length, spi_nodma_device_handle_t spi_dev);
 
 /**
  * @brief SPI Device read transfer routine
