@@ -623,7 +623,7 @@ void qrobot_line_follower_task(void *ignore) {
 		if (valid_control_output) {
 			//ESP_LOGI(tag, "(%d,%d)", cx_current, cy_current);
 			// Debug tracking point
-			//image_set_pixel(image_frame_masked, cx_current, cy_current, 88);
+			image_set_pixel(image_blobs, cx_current, cy_current, 88);
 
 			// Update PIDS
 			line_following_pid.set_point = img_center;
@@ -643,6 +643,7 @@ void qrobot_line_follower_task(void *ignore) {
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
 			} else {
+			    ESP_LOGI(tag, "Lost!: %d", millis());
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
 				//controller_output_map[LINE_FOLLOWER_CONTROLLER].w ;
 			}
@@ -652,7 +653,7 @@ void qrobot_line_follower_task(void *ignore) {
 		//ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 
         // Now debug it
-       // print_image(image_blobs);
+        //print_image(image_blobs);
 
         vector_free(&image_moments);
 

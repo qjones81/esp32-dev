@@ -26,7 +26,8 @@
 #define SPI_H_
 
 #include <stdint.h>
-#include "driver/spi_master_nodma.h"
+//#include "driver/spi_master_nodma.h"
+#include "spi_master_nodma.h"
 
 #ifdef __cplusplus
 extern "C"
