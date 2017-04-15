@@ -123,8 +123,8 @@ float max_control_output = 500.0f;
 float control_output = 0.0f;
 float goto_goal_gain = 1.0f;
 
-uint16_t max_throttle = 150; //200
-uint16_t max_steering = 50; // 50
+uint16_t max_throttle = 300; //200
+uint16_t max_steering = 100; // 50
 uint16_t steering_dead_zone = 50;
 uint16_t throttle_dead_zone = 50;
 
@@ -147,7 +147,7 @@ float wheel_base = .151f; // 151 mm
 float wheel_steps_per_m_1 = 11317.6848421; // steps per m (Right)
 float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 
-float angle_offset = -2.2f; // Offset for hardware issues
+float angle_offset = 0.0f; // Offset for hardware issues
 
 uint16_t motor_current = 1500; // Stepper motor current in mA
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
@@ -239,6 +239,7 @@ extern void qrobot_send_debug(char *format, ...);
 extern void qrobot_down_and_back_task(void *ignore);
 extern void qrobot_navigation_task(void *ignore);
 
+bool enable_avoidance = false;
 controller_output_t qrobot_get_active_controller_output()
 {
 	for(int i = 0; i < CONTROLLER_TYPE_MAX; i++)
@@ -272,9 +273,9 @@ void qrobot_position_hold_task(void *ignore)
 
 		if(!in_hold_mode && (qrobot_get_active_controller_output().id == controller_output_map[CRUISE_CONTROLLER].id))
 		{
-			sound_lib_play_tone(sound_device, C_5, 100, 0);
+			//sound_lib_play_tone(sound_device, C_5, 100, 0);
 			delay_ms(150);
-			sound_lib_play_tone(sound_device, A_5, 100, 0);
+			//sound_lib_play_tone(sound_device, A_5, 100, 0);
 
 			//delay_ms(1000); // Make sure we settle down a bit
 			hold_distance = total_meters;
@@ -296,7 +297,7 @@ void qrobot_position_hold_task(void *ignore)
 		else
 		{
 			controller_output_map[CRUISE_CONTROLLER].v = 0; // Zero out velocities
-						controller_output_map[CRUISE_CONTROLLER].w = 0; // Zero out velocities
+			controller_output_map[CRUISE_CONTROLLER].w = 0; // Zero out velocities
 		}
 
     	last_time = millis();
@@ -704,6 +705,7 @@ void qrobot_line_follower_task(void *ignore) {
 			controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
 			controller_output_map[LINE_FOLLOWER_CONTROLLER].w = -pid_compute(&line_following_pid);
 
+			// TODO: Scale speed based on turn
 			// Reset timeout
 			settle_time = 0;
 		} else { // Try to keep some momentum.  Really need some line hunting here
@@ -763,8 +765,14 @@ void qrobot_down_and_back_task(void *ignore)
 	bool waypoint_completed = true; // Already at 1st.  Technically.
 
 	// Start obstacle avoid
+
 	TaskHandle_t xHandle = NULL;
-	xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, &xHandle);
+
+	ESP_LOGI(tag, "Avoid: %d", enable_avoidance);
+
+	if(enable_avoidance) {
+		xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, &xHandle);
+	}
 
 	while(1)
 	{
@@ -781,6 +789,8 @@ void qrobot_down_and_back_task(void *ignore)
 
 		// TODO: Gotta reorder this.  Kind of weird reverse logic.
 		if(waypoint_completed) {
+			// Beep on waypoint
+			sound_lib_play_tone(sound_device, A_5, 250, 0);
 			waypoint_completed = false;
 			// Send waypoint
 			xQueueSendToFront(navigation_waypoint_queue, &waypoint_list[waypoint_index], (TickType_t ) 100 / portTICK_PERIOD_MS );
@@ -798,12 +808,17 @@ void qrobot_down_and_back_task(void *ignore)
 		if(waypoint_index >= waypoint_count) {
 			uint32_t finish_time = millis();
 			qrobot_send_debug("Completion Time: %.2f (s)", (finish_time - start_time) * 0.001f);
+			// Beep on waypoint
+			sound_lib_play_tone(sound_device, A_5, 250, 0);
 			break;
 		}
 		vTaskDelay(20 / portTICK_PERIOD_MS);
 	}
 	// Kill avoidance task
-	vTaskDelete(xHandle);
+	if(xHandle != NULL) {
+		vTaskDelete(xHandle);
+	}
+	enable_avoidance = false;
 	vTaskDelete(NULL);
 }
 #if defined(CONFIG_QROBOT_USE_CONTROL_SERVICE)
@@ -925,7 +940,16 @@ void qrobot_control_debug_service(void *ignore)
 					send(client_sock, "INVALID\n", 8, 0);
 				}
 			}
+			else if(!strncmp(data, "DANDB_AVOID",11)) {
+
+				enable_avoidance = true;
+				// Start task
+				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,2, NULL);
+
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
+			}
 			else if(!strncmp(data, "DANDB",5)) {
+				enable_avoidance = false;
 				// Start task
 				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,2, NULL);
 
@@ -1854,8 +1878,8 @@ void qrobot_start()
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
 
    // Start position hold task
-   xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
-
+ //  xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
+//
   // xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 }
