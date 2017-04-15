@@ -40,6 +40,11 @@ typedef struct {
     uint32_t m10; // Partial 1st order moment in X
     uint32_t m01; // Partial 1st order moment in Y
     uint32_t m11; // 1st order moment in X/Y
+    uint32_t lower_bound; // Moment bounds
+    uint32_t upper_bound; // Moment bounds
+    uint32_t left_bound;  // Moment bounds
+    uint32_t right_bound; // Moment bounds
+    uint8_t label_id;     // Label from component ID for moment
 } image_moment_t;
 
 
@@ -78,6 +83,15 @@ image_moment_t calculate_moments(image_t *_inimage);
  * @param moments_out: Calculated moment vector
  */
 void calculate_local_moments(image_t *in_image, vector *moments_out);
+
+/**
+ * @brief Calculate binary image moments, only up the 1st order for now.  Is a microcontroller after all...
+ * @param in_image: Image to compute moments for.  Calculated locally for each blob.  Input image is not modified.
+ * @param blob_id: Blob id to look for in labelled image
+ * @param y: Row to calculate at
+ * @return Calculated row center pixel
+ */
+uint32_t calculate_row_center(image_t *in_image, uint32_t blob_id, uint32_t row);
 
 /**
  * @brief Create image utility helper function

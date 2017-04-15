@@ -54,6 +54,11 @@ image_moment_t calculate_moments(image_t *in_image)
 	}
 
 	memset(&ret_moments, 0, sizeof(image_moment_t));
+	ret_moments.lower_bound = INT32_MAX;
+	ret_moments.left_bound = INT32_MAX;
+	ret_moments.upper_bound = INT32_MIN;
+	ret_moments.right_bound = INT32_MIN;
+
 	for(int y = 0; y < in_image->height; y++)
 	{
 		for (int x = 0; x < in_image->width; x++)
@@ -64,6 +69,11 @@ image_moment_t calculate_moments(image_t *in_image)
 				ret_moments.m10 += x; //sum(X,Y) of x^1*y^0
 				ret_moments.m01 += y; //sum(X,Y) of x^0*y^1
 				ret_moments.m11 += (x*y); //sum(X,Y) of x^1*y^1
+				ret_moments.lower_bound = min(ret_moments.lower_bound, y);
+				ret_moments.left_bound = min(ret_moments.left_bound, x);
+				ret_moments.upper_bound = max(ret_moments.upper_bound, y);
+				ret_moments.right_bound = max(ret_moments.right_bound, x);
+				ret_moments.label_id = 1;
 			}
 		}
 	}
@@ -77,16 +87,11 @@ void calculate_local_moments(image_t *in_image, vector *moments_out)
 		return;
 	}
 
-	static image_moment_t blob_moments[32];
+	static image_moment_t blob_moments[32]; // Not a huge fan of this (wastes memory a bit) but was having some allocation issues. Will fix this once switching over to C++
 	//image_moment_t* blob_moments[32]; // Support 32 for now.  Needs to be a parameter of some sort
 	memset(&blob_moments, 0, 32 * sizeof(image_moment_t));
 
-
-    bool used_id[32];
-	for (int i = 0; i < 32; i++) {
-		used_id[i] = false;
-		//memset(&blob_moments[i], 0, sizeof(image_moment_t)); // Zero it out just in case
-	}
+    bool used_id[32] = { 0 }; // Set to zeros
 
 	for (int y = 0; y < in_image->height; y++) {
         for (int x = 0; x < in_image->width; x++) {
@@ -94,16 +99,48 @@ void calculate_local_moments(image_t *in_image, vector *moments_out)
             if(blob_id == 0) continue; // Background pixel
 
             if(used_id[blob_id] == false) {
+            	blob_moments[blob_id].lower_bound = y;
+            	blob_moments[blob_id].left_bound = x;
+            	blob_moments[blob_id].upper_bound = y;
+            	blob_moments[blob_id].right_bound = x;
+            	blob_moments[blob_id].label_id = blob_id;
+
             	vector_add(moments_out, &blob_moments[blob_id]); // Add to output vector
             	used_id[blob_id] = true;
             }
 
-			blob_moments[blob_id].m00 += 1; //sum(X,Y) of x^0*y^0
-			blob_moments[blob_id].m10 += x; //sum(X,Y) of x^1*y^0
-			blob_moments[blob_id].m01 += y; //sum(X,Y) of x^0*y^1
-			blob_moments[blob_id].m11 += (x * y); //sum(X,Y) of x^1*y^1
+			blob_moments[blob_id].m00 += 1; 		//sum(X,Y) of x^0*y^0
+			blob_moments[blob_id].m10 += x; 		//sum(X,Y) of x^1*y^0
+			blob_moments[blob_id].m01 += y; 		//sum(X,Y) of x^0*y^1
+			blob_moments[blob_id].m11 += (x * y); 	//sum(X,Y) of x^1*y^1
+			blob_moments[blob_id].lower_bound = min(blob_moments[blob_id].lower_bound, y);
+			blob_moments[blob_id].left_bound = min(blob_moments[blob_id].left_bound, x);
+			blob_moments[blob_id].upper_bound = max(blob_moments[blob_id].upper_bound, y);
+			blob_moments[blob_id].right_bound = max(blob_moments[blob_id].right_bound, x);
         }
     }
+}
+
+uint32_t calculate_row_center(image_t *in_image, uint32_t blob_id, uint32_t y)
+{
+	if(in_image == NULL) {
+		ESP_LOGE(tag, "calculate_row_center: NULL Parameter passed for input image");
+		return;
+	} else if(y > (in_image->width-1)) {
+		ESP_LOGE(tag, "calculate_row_center: Index of out range.");
+		return;
+	}
+
+	uint32_t row_accum = 0;
+	uint32_t pixel_count = 0;
+	for (int x = 0; x < in_image->width; x++) {
+		if(blob_id != in_image->data[in_image->height * y + x]) {
+			continue;
+		}
+		row_accum += x;
+		pixel_count++;
+	}
+	return (uint32_t) ((float) row_accum / pixel_count);
 }
 
 void create_image(uint32_t width, uint32_t height, uint8_t depth, image_t **out_image)
@@ -149,8 +186,9 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 	uint8_t num_components = 0;
 	uint8_t num_labels = 1; // Start with 1 for non zero indexing purposes.  0 is used for background
 
-	uint32_t width_labels = in_image->width + 1; // Pad it by 1 pixel
-	uint32_t height_labels = in_image->height + 1; // Pad it by 1 pixel
+	// TODO: Offset or inset image.  For now hard card to inset
+	uint32_t width_labels = in_image->width;// + 1; // Pad it by 1 pixel
+	uint32_t height_labels = in_image->height;// + 1; // Pad it by 1 pixel
 
 	// Using uint8 here, so 255 max labels.
 	if(label_image == NULL) {
@@ -164,9 +202,10 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 	memset(label_image, 0, width_labels * height_labels * sizeof(uint8_t));
 	memset(&labels, 0, 32 * sizeof(label_node_t));
 
+	// Start at x,y = 1 for padding
 	// First Pass
-	for (int y = 0, y_label = 1; y < in_image->height; y++, y_label++) { // Start at one since we are padded for labels
-		for (int x = 0, x_label = 1; x < in_image->width; x++, x_label++) {
+	for (int y = 1, y_label = 1; y < in_image->height-1; y++, y_label++) { // Start at one since we are padded for labels
+		for (int x = 1, x_label = 1; x < in_image->width-1; x++, x_label++) {
 			uint8_t pixel = in_image->data[in_image->height * y + x];
 			uint8_t *curr_label = &label_image[height_labels * y_label + x_label]; // offset for padding with ptr math
 			uint8_t left_label = label_image[height_labels * y_label + (x_label - 1)]; // offset for padding with ptr math
@@ -204,8 +243,8 @@ uint8_t image_connected_components(image_t *in_image, image_t *out_labeled)
 
 	uint8_t max_label = 0;
 	// Second Pass for label cleanup
-	for (int y = 0, y_label = 1; y < out_labeled->height; y++, y_label++) { // Start at one since we are padded for labels
-		for (int x = 0, x_label = 1; x < out_labeled->width; x++, x_label++) {
+	for (int y = 1, y_label = 1; y < out_labeled->height; y++, y_label++) { // Start at one since we are padded for labels
+		for (int x = 1, x_label = 1; x < out_labeled->width; x++, x_label++) {
 			uint8_t equivalent_label = label_image[height_labels * y_label + x_label];
 			label_node_t *node = &labels[equivalent_label];
 			while(node != NULL) {

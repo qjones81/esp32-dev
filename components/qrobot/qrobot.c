@@ -54,6 +54,7 @@
 #include "driver/adc.h"
 #include "sharpir/sharpir.h"
 #include "image_processing/image_processing.h"
+#include "sound_lib/sound_lib.h"
 #include "sockets/socket_server.h"
 
 static const char *tag = "qrobot";
@@ -124,8 +125,8 @@ float goto_goal_gain = 1.0f;
 
 uint16_t max_throttle = 150; //200
 uint16_t max_steering = 50; // 50
-uint16_t steering_dead_zone = 40;
-uint16_t throttle_dead_zone = 40;
+uint16_t steering_dead_zone = 50;
+uint16_t throttle_dead_zone = 50;
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
@@ -184,6 +185,8 @@ adns_3080_device_t *adns_sensor;
 amis_30543_device_t *amis_motor_1;
 amis_30543_device_t *amis_motor_2;
 
+// Sound driver
+sound_device_t *sound_device;
 // PIDS
 pid_device_control_t position_pid;
 pid_device_control_t heading_pid;
@@ -207,6 +210,7 @@ typedef struct {
 
 typedef struct {
 	bool enable; // Enable Flag
+	uint8_t id;
 	float v; // Linear Velocity
 	float w; // Angular Velocity
 } controller_output_t;
@@ -249,6 +253,58 @@ controller_output_t qrobot_get_active_controller_output()
 	return default_output; // default zero output
 }
 
+void qrobot_position_hold_task(void *ignore)
+{
+    ESP_LOGD(tag, ">> qrobot_position_hold_task");
+
+    uint32_t settle_time = 0;
+    uint32_t last_time = 0;
+
+    float hold_distance = 0.0f;
+    //float hold_y = 0.0f;
+    bool in_hold_mode = false;
+
+    controller_output_map[CRUISE_CONTROLLER].enable = true; // ALWAYS enabled.  Default behavior
+	controller_output_map[CRUISE_CONTROLLER].v = 0; // Zero out velocities
+	controller_output_map[CRUISE_CONTROLLER].w = 0; // Zero out velocities
+
+	while (1) {
+
+		if(!in_hold_mode && (qrobot_get_active_controller_output().id == controller_output_map[CRUISE_CONTROLLER].id))
+		{
+			sound_lib_play_tone(sound_device, C_5, 100, 0);
+			delay_ms(150);
+			sound_lib_play_tone(sound_device, A_5, 100, 0);
+
+			//delay_ms(1000); // Make sure we settle down a bit
+			hold_distance = total_meters;
+			in_hold_mode = true;
+		}
+		else if ((qrobot_get_active_controller_output().id
+				!= controller_output_map[CRUISE_CONTROLLER].id)) {
+			in_hold_mode = false;
+		}
+
+		if (in_hold_mode) {
+
+			position_pid.set_point = hold_distance;
+			position_pid.input = total_meters;
+			position_pid.output_max = goto_goal_gain;
+			position_pid.output_min = -goto_goal_gain;
+			controller_output_map[CRUISE_CONTROLLER].v = pid_compute(&position_pid);
+		}
+		else
+		{
+			controller_output_map[CRUISE_CONTROLLER].v = 0; // Zero out velocities
+						controller_output_map[CRUISE_CONTROLLER].w = 0; // Zero out velocities
+		}
+
+    	last_time = millis();
+    	vTaskDelay(50 / portTICK_PERIOD_MS);
+    }
+
+	vTaskDelete(NULL);
+}
 void qrobot_navigation_task(void *ignore)
 {
     ESP_LOGD(tag, ">> qrobot_navigation_task");
@@ -564,6 +620,9 @@ void qrobot_line_follower_task(void *ignore) {
     uint32_t cx_prev = img_center; // Assume center for start
     uint32_t cx_current = img_center;
     uint32_t cy_current = img_center;
+
+    //uint32_t cx_current_test;
+    //uint32_t cy_current_test;
     bool valid_control_output = false;
 
     while (1) {
@@ -604,15 +663,25 @@ void qrobot_line_follower_task(void *ignore) {
         	image_moment_t *M = VECTOR_GET(image_moments, image_moment_t *, i);
 
 			if (M->m00 > MIN_BLOB_AREA) {
+				// Check moment upper bounds
+
 				uint32_t cx = (uint32_t) ((float) M->m10 / M->m00);
 				uint32_t cy = (uint32_t) ((float) M->m01 / M->m00);
 
+				cy = cy - (cy - M->lower_bound) / 2; // Go halfway up for control y value
+
+				cx = calculate_row_center(image_blobs, M->label_id, cy); // Compute new x
+
+				//ESP_LOGI(tag, "New cx: (%d,%d)", cx, cy);
 				// Weight the distance to the previous control point most
 				int tmp_blob_score = M->m00 - abs(cx - img_center) - (15 * abs(cx - cx_prev));
 				if(tmp_blob_score > max_blob_score) {
 					max_blob_score = tmp_blob_score;
 					cx_current = cx;
 					cy_current = cy;
+
+					//cx_current_test = (uint32_t) ((float) M->m10 / M->m00);
+					//cy_current_test =(uint32_t) ((float) M->m01 / M->m00);
 				}
 				//ESP_LOGI(tag, "Temp: %d to %d (MAX)", M->m00, (50 * abs(cx - cx_prev)));
 				//ESP_LOGI(tag, "Scores: %d to %d (MAX)", tmp_blob_score, max_blob_score);
@@ -623,7 +692,8 @@ void qrobot_line_follower_task(void *ignore) {
 		if (valid_control_output) {
 			//ESP_LOGI(tag, "(%d,%d)", cx_current, cy_current);
 			// Debug tracking point
-			image_set_pixel(image_blobs, cx_current, cy_current, 88);
+			//image_set_pixel(image_blobs, cx_current, cy_current, 88);
+			//image_set_pixel(image_blobs, cx_current_test, cy_current_test, 55);
 
 			// Update PIDS
 			line_following_pid.set_point = img_center;
@@ -643,8 +713,9 @@ void qrobot_line_follower_task(void *ignore) {
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.0f;
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
 			} else {
-			    ESP_LOGI(tag, "Lost!: %d", millis());
-				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.2f;
+			    //ESP_LOGI(tag, "Lost!: %d", millis());
+				sound_lib_play_tone(sound_device, C_5, 200, 0);
+				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.1f;
 				//controller_output_map[LINE_FOLLOWER_CONTROLLER].w ;
 			}
 		}
@@ -653,7 +724,7 @@ void qrobot_line_follower_task(void *ignore) {
 		//ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 
         // Now debug it
-        //print_image(image_blobs);
+       // print_image(image_blobs);
 
         vector_free(&image_moments);
 
@@ -804,6 +875,8 @@ void qrobot_control_debug_service(void *ignore)
 			if(!strncmp(data, "RESET",5)) {
 				x_pos = y_pos = theta = 0;
 				robot_in_navigation = false;
+
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
 			}
 			else if(!strncmp(data, "GOAL_GAIN",9)) {
 				token = strtok(NULL, " ");
@@ -855,12 +928,23 @@ void qrobot_control_debug_service(void *ignore)
 			else if(!strncmp(data, "DANDB",5)) {
 				// Start task
 				xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,2, NULL);
+
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
 			}
 			else if(!strncmp(data, "LINE_FOLLOW",11)) {
 				// Start task
 				xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL,2, NULL);
+
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
 			}
 			else if(!strncmp(data, "PERF_PARAMS", 11)) {
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
+				delay_ms(300);
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
+				delay_ms(300);
+				sound_lib_play_tone(sound_device, A_5, 250, 0);
+				delay_ms(300);
+
 				token = strtok(NULL, " ");
 				int counter = 0;
 				while (token) {
@@ -1053,10 +1137,12 @@ void qrobot_control_debug_service(void *ignore)
 				if ((uxBits & ABORT_BIT)) {
 					printf("GOT RESUME!\n");
 					xEventGroupClearBits(qrobot_event_group, ABORT_BIT);
+					sound_lib_play_tone(sound_device, A_5, 500, 0);
 				}
 				else {
 					printf("GOT ABORT!\n");
 					xEventGroupSetBits(qrobot_event_group, ABORT_BIT);
+					sound_lib_play_tone(sound_device, C, 500, 0);
 				}
 				send(client_sock, "OK\n", 3, 0);
 			}
@@ -1202,6 +1288,7 @@ void qrobot_controller_task(void *ignore)
 			continue;
 		}
 		else if(!robot_stable && controller_output_map[RC_CONTROLLER].enable) { // If throttle input and not stable don't allow to stand
+			sound_lib_play_tone(sound_device, 75, 150, 0);
 			last_update = millis();
 			robot_stable = false;
 			stable_time = 0;
@@ -1583,10 +1670,42 @@ void qrobot_init_stepper_motors()
     stepper_control_add_device(STEPPER_MOTOR_2, motor_2_cfg);
     stepper_control_start();
 }
-
+void qrobot_init_sound()
+{
+	sound_device = sound_lib_create_device(GPIO_NUM_26);
+	sound_lib_init();
+	sound_lib_start();
+}
 void qrobot_init()
 {
 	ESP_LOGI(tag, "QRobot by Quincy Jones v1.0.  USE AT YOUR OWN RISK!\n\n");
+
+	// Fire up sound first so we can have some feedback!
+	qrobot_init_sound();
+
+	//sound_lib_play_tone(sound_device, C, 50, 500);
+
+	// Play startup song here
+	sound_lib_play_tone(sound_device, A_5, 500, 0);
+	delay_ms(500);
+	sound_lib_play_tone(sound_device, A_5 * 2, 250, 0);
+	delay_ms(250);
+
+    esp_err_t err = wifi_network_up();
+    if(err != ESP_OK)
+    {
+    	ESP_LOGD(tag, "WI-FI disabled.\n");
+
+    	// Play error code
+    	sound_lib_play_tone(sound_device, 50, 250, 500);
+    	vTaskDelay(10000 / portTICK_PERIOD_MS); // Loop Forever
+    }
+
+	// Play startup song here
+	sound_lib_play_tone(sound_device, A_5, 250, 0);
+	delay_ms(250);
+	sound_lib_play_tone(sound_device, A_5, 250, 0);
+	delay_ms(250);
 
 	// Init SPI Bus
 	//ESP_LOGI(tag, "Initializing SPI Bus...\n");
@@ -1599,10 +1718,10 @@ void qrobot_init()
 	qrobot_init_mpu9250(); // Init IMU
 
 	uint32_t gyro_init_begin = millis();
-	delay_ms(500);
 	ESP_LOGI(tag, "Begin gyro calibration: Keep robot still for 10 seconds...\n");
 	delay_ms(500);
 
+	sound_lib_play_tone(sound_device, C, 50, 200);
 	// Init ADNS
 	qrobot_init_adns(); // Init ADNS
 
@@ -1618,6 +1737,14 @@ void qrobot_init()
 	// Gyro Calibration delay
 	delay_ms(max(1, 10000 - (millis() - gyro_init_begin)));
 
+	// Play ending song here
+	sound_lib_play_tone(sound_device, A_5, 250, 0);
+	delay_ms(250);
+	sound_lib_play_tone(sound_device, A_5, 250, 0);
+	delay_ms(250);
+
+	// We're through calibration
+	//sound_lib_stop(); // Kill sound
 	// Pulse motors for ready indication
 	for (uint8_t k = 0; k < 5; k++) {
 		stepper_control_set_speed(STEPPER_MOTOR_1, 5 * 46);
@@ -1646,7 +1773,8 @@ void qrobot_init()
 		socket_debug_queue = xQueueCreate(25, sizeof(socket_event_t));
 		xTaskCreate(&qrobot_socket_debug_task, "qrobot_debug_socket", 2048, NULL, 3, NULL);
 	#endif
-	delay_ms(500);
+
+	//delay_ms(500);
 
 	// Setup event groups
 	qrobot_event_group = xEventGroupCreate();
@@ -1700,6 +1828,12 @@ void qrobot_init()
 	line_following_pid.output_max = 1.0f;
 	line_following_pid.clamp_output = true;
 
+	// Update Output maps
+
+	for (int i = 0; i < CONTROLLER_TYPE_MAX; i++) {
+		controller_output_map[i].id = i;
+	}
+
 	robot_shutdown = true;
 	robot_stable = false;
 	robot_in_navigation = false;
@@ -1718,7 +1852,11 @@ void qrobot_start()
 
    // Start navigation task
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
-   //xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
+
+   // Start position hold task
+   xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
+
+  // xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 }
 

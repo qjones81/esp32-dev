@@ -12,6 +12,7 @@
 #include "driver/adc.h"
 #include "utils/utils.h"
 #include "wifi/wifi.h"
+#include "sound_lib/sound_lib.h"
 
 #include <string.h>
 
@@ -91,17 +92,42 @@ void app_main(void)
 {
     nvs_flash_init();
 
-    esp_err_t err = wifi_network_up();
-    if(err != ESP_OK)
-    {
-    	ESP_LOGD(tag, "WI-FI disabled.\n");
-    }
+//   sound_device_t *sound_dev;
+//   sound_dev.channel = LEDC_CHANNEL_0;
+//   sound_dev.volume = 128;
+//   sound_dev.speed = LEDC_HIGH_SPEED_MODE;
+//   sound_dev.output_pin = GPIO_NUM_26;
+
+//   sound_device_t *sound_dev = sound_lib_create_device(GPIO_NUM_26);
+//   sound_lib_init();
+//   sound_lib_start();
+//   sound_lib_play_tone(sound_dev, A_5 * 2, 250, 250);
+//
+////      while(1) {
+////
+////   	   //sound_lib_play_tone(&sound_dev, A_5 * 2, 250);
+////   	   vTaskDelay(5000/portTICK_PERIOD_MS);
+////      }
+//
+//      vTaskDelay(10000/portTICK_PERIOD_MS);
+//
+//      sound_lib_stop();
+//
+//      vTaskDelay(2000/portTICK_PERIOD_MS);
+//      sound_lib_play_tone(sound_dev, A_5 * 2, 250, 500);
+//   while(1) {
+//
+//	   sound_lib_play_tone(&sound_dev, A_5 * 2, 250);
+//	   vTaskDelay(500/portTICK_PERIOD_MS);
+//   }
 
     // Init platform
     qrobot_init();
 
     // Start it up!
     qrobot_start();
+
+
 
     //xTaskCreate(&task_servoSweep, "servoTask", 2048, NULL, 5, NULL);
 
@@ -143,7 +169,7 @@ void app_main(void)
 */
 
     // ledc test
-//    gpio_set_direction(GPIO_NUM_16, GPIO_MODE_OUTPUT);
+   // gpio_set_direction(GPIO_NUM_16, GPIO_MODE_OUTPUT);
    // int i = 5000;
    // while (1) // Cannot Continue.  Loop Forever with delay a bit
    // {
