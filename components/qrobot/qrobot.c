@@ -133,12 +133,12 @@ int ITERM_MAX = 8000;       // 5000
 uint16_t MIN_BLOB_AREA = 40;  // TODO: From mobile app
 
 //save to flash
-float max_linear_speed = 1.0f;
-float max_linear_accel = 0.25f;
+float max_linear_speed = 150.0f;
+float max_linear_accel = 60.0f;
 float max_motor_accel = 50000.f;
 float max_motor_deccel = 50000.f;
-float max_angular_speed = 1.0f;
-float max_angular_accel = 0.1f;
+float max_angular_speed = 50.0f;
+float max_angular_accel = 1.0f;
 float max_throttle_response = 5500.0f; // TODO: Should ultimately be based off the accelerations.  Once these are implemented...
 
 float wheel_diameter_1 = 0.090f; // 90 mm (Right)
@@ -147,7 +147,7 @@ float wheel_base = .151f; // 151 mm
 float wheel_steps_per_m_1 = 11317.6848421; // steps per m (Right)
 float wheel_steps_per_m_2 = 11317.6848421; // steps per m (Left)
 
-float angle_offset = 0.0f; // Offset for hardware issues
+float angle_offset = -6.2f; // Offset for hardware issues
 
 uint16_t motor_current = 1500; // Stepper motor current in mA
 uint16_t steps_per_rev = 3200;  // 1/16 microstepping
@@ -748,7 +748,7 @@ void qrobot_down_and_back_task(void *ignore)
 
     waypoint_t waypoint_list[3];
 
-    waypoint_list[0].x = (7.0f * .3048); // 6-ish ft...
+    waypoint_list[0].x = (6.2f * .3048); // 6-ish ft...
     waypoint_list[0].y = 0;
     waypoint_list[0].theta = 0;
     waypoint_list[0].is_last = false;
@@ -760,7 +760,7 @@ void qrobot_down_and_back_task(void *ignore)
     waypoint_list[1].is_last = true;
     waypoint_list[1].notify_queue = queue;
 
-    waypoint_list[2].x = (0.0f * .3048);
+    waypoint_list[2].x = (0.5f * .3048);
     waypoint_list[2].y = 0.2f;
     waypoint_list[2].theta = 0;
     waypoint_list[2].is_last = true;
@@ -1888,6 +1888,9 @@ void qrobot_start()
 
    // Start navigation task
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
+
+   delay_ms(5000);
+   xTaskCreate(&qrobot_down_and_back_task, "qrobot_down_and_back", 2048, NULL,2, NULL);
 
    // Start position hold task
   // xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
