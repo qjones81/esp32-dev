@@ -125,8 +125,8 @@ float goto_goal_gain = 1.0f;
 
 uint16_t max_throttle = 300; //200
 uint16_t max_steering = 100; // 50
-uint16_t steering_dead_zone = 50;
-uint16_t throttle_dead_zone = 50;
+uint16_t steering_dead_zone = 40;
+uint16_t throttle_dead_zone = 40;
 
 int ITERM_MAX_ERROR = 25;   // Iterm windup constants for PI control //40
 int ITERM_MAX = 8000;       // 5000
@@ -238,7 +238,7 @@ spi_nodma_bus_config_t buscfg={
 extern void qrobot_send_debug(char *format, ...);
 extern void qrobot_down_and_back_task(void *ignore);
 extern void qrobot_navigation_task(void *ignore);
-
+extern void qrobot_stop();
 bool enable_avoidance = false;
 controller_output_t qrobot_get_active_controller_output()
 {
@@ -348,7 +348,7 @@ void qrobot_navigation_task(void *ignore)
 			float y = goal_waypoint.y - y_pos;
 			float target_distance = sqrt((x * x) + (y * y));
 			float theta_d = atan2((goal_waypoint.y - y_pos), (goal_waypoint.x - x_pos));
-			if (target_distance <= 0.1) {
+			if (target_distance <= 0.2) {
 				settle_time += (millis() - last_time);
 				if (settle_time >= 100) {
 					qrobot_send_debug("Arrived: %f\n", target_distance);
@@ -507,10 +507,13 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
             if ((left_obstacle_detected || right_obstacle_detected)
                     && (cm_r < 50.0f || cm_l < 50.0f)) {
 
+              //  ESP_LOGI(tag, "OBSTABCLE: %.2f, %.2f", cm_l, cm_r)
                 // TODO: Need to do some trig to convert to local coordinates and transform back
-                detour_waypoint.x = x_pos + 0.5f; // 45 degrees test
-                detour_waypoint.y = y_pos + 0.5f;
+                detour_waypoint.x = x_pos + 0.4f; // 45 degrees test
+                detour_waypoint.y = y_pos + 0.4f;
                 controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = true;
+
+                in_avoid = true;
             } else {
                 controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
                 controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].v = 0;
@@ -522,7 +525,7 @@ void qrobot_obstacle_avoidance_task(void *ignore) {
             float y = detour_waypoint.y - y_pos;
             float target_distance = sqrt((x * x) + (y * y));
             float theta_d = atan2((detour_waypoint.y - y_pos), (detour_waypoint.x - x_pos));
-            if (target_distance <= 0.1) { // Have we hit the goal?
+            if (target_distance <= 0.05) { // Have we hit the goal?
                 qrobot_send_debug("Detour Arrived: %f\n", target_distance);
 
                 controller_output_map[OBSTACLE_AVOIDANCE_CONTROLLER].enable = false;
@@ -586,11 +589,11 @@ void qrobot_line_follower_task(void *ignore) {
 //    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 //    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 //    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-//
+
 //    create_image(30, 30, sizeof(uint8_t), &image_frame_test);
 //    memcpy(image_frame_test->data, &test_image, 30 * 30 * sizeof(uint8_t));
 
-    // Create image
+ //    Create image
     int img_width = 30;
     int img_height = 30;
     int img_center = img_width / 2;
@@ -693,7 +696,7 @@ void qrobot_line_follower_task(void *ignore) {
 		if (valid_control_output) {
 			//ESP_LOGI(tag, "(%d,%d)", cx_current, cy_current);
 			// Debug tracking point
-			//image_set_pixel(image_blobs, cx_current, cy_current, 88);
+			image_set_pixel(image_blobs, cx_current, cy_current, 88);
 			//image_set_pixel(image_blobs, cx_current_test, cy_current_test, 55);
 
 			// Update PIDS
@@ -716,7 +719,7 @@ void qrobot_line_follower_task(void *ignore) {
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].w = 0.0f;
 			} else {
 			    //ESP_LOGI(tag, "Lost!: %d", millis());
-				sound_lib_play_tone(sound_device, C_5, 200, 0);
+				//sound_lib_play_tone(sound_device, C_5, 200, 0);
 				controller_output_map[LINE_FOLLOWER_CONTROLLER].v = 0.1f;
 				//controller_output_map[LINE_FOLLOWER_CONTROLLER].w ;
 			}
@@ -726,7 +729,7 @@ void qrobot_line_follower_task(void *ignore) {
 		//ESP_LOGI(tag, "Frame end: %d", millis() - start_read);
 
         // Now debug it
-       // print_image(image_blobs);
+        //print_image(image_blobs);
 
         vector_free(&image_moments);
 
@@ -745,17 +748,23 @@ void qrobot_down_and_back_task(void *ignore)
 
     waypoint_t waypoint_list[3];
 
-    waypoint_list[0].x = (6.25f * .3048); // 6-ish ft...
+    waypoint_list[0].x = (7.0f * .3048); // 6-ish ft...
     waypoint_list[0].y = 0;
     waypoint_list[0].theta = 0;
     waypoint_list[0].is_last = false;
     waypoint_list[0].notify_queue = queue;
 
-    waypoint_list[1].x = (0.5f * .3048);
-    waypoint_list[1].y = -0.5f;
+    waypoint_list[1].x = (-0.5f * .3048);
+    waypoint_list[1].y = 0.0f;
     waypoint_list[1].theta = 0;
     waypoint_list[1].is_last = true;
     waypoint_list[1].notify_queue = queue;
+
+    waypoint_list[2].x = (0.0f * .3048);
+    waypoint_list[2].y = 0.2f;
+    waypoint_list[2].theta = 0;
+    waypoint_list[2].is_last = true;
+    waypoint_list[2].notify_queue = queue;
 
     // TODO: Add a turn?
     uint32_t start_time = 0;
@@ -768,7 +777,7 @@ void qrobot_down_and_back_task(void *ignore)
 
 	TaskHandle_t xHandle = NULL;
 
-	ESP_LOGI(tag, "Avoid: %d", enable_avoidance);
+	//ESP_LOGI(tag, "Avoid: %d", enable_avoidance);
 
 	if(enable_avoidance) {
 		xTaskCreate(&qrobot_obstacle_avoidance_task, "qrobot_obstacle", 2048, NULL,5, &xHandle);
@@ -790,17 +799,17 @@ void qrobot_down_and_back_task(void *ignore)
 		// TODO: Gotta reorder this.  Kind of weird reverse logic.
 		if(waypoint_completed) {
 			// Beep on waypoint
-			sound_lib_play_tone(sound_device, A_5, 250, 0);
+			//sound_lib_play_tone(sound_device, A_5, 250, 0);
 			waypoint_completed = false;
 			// Send waypoint
 			xQueueSendToFront(navigation_waypoint_queue, &waypoint_list[waypoint_index], (TickType_t ) 100 / portTICK_PERIOD_MS );
 
-			qrobot_send_debug("Sending Waypoint!");
+			//qrobot_send_debug("Sending Waypoint!");
 		}
 
 		// Wait for completion
 		if (xQueueReceive(waypoint_list[waypoint_index].notify_queue, &(recv), (TickType_t ) 10 / portTICK_PERIOD_MS)) {
-			qrobot_send_debug("Completed Waypoint!");
+			//qrobot_send_debug("Completed Waypoint!");
 			waypoint_completed = true;
 			waypoint_index++;
 		}
@@ -810,9 +819,10 @@ void qrobot_down_and_back_task(void *ignore)
 			qrobot_send_debug("Completion Time: %.2f (s)", (finish_time - start_time) * 0.001f);
 			// Beep on waypoint
 			sound_lib_play_tone(sound_device, A_5, 250, 0);
+			//qrobot_stop();
 			break;
 		}
-		vTaskDelay(20 / portTICK_PERIOD_MS);
+		vTaskDelay(50 / portTICK_PERIOD_MS);
 	}
 	// Kill avoidance task
 	if(xHandle != NULL) {
@@ -851,7 +861,7 @@ void qrobot_control_debug_service(void *ignore)
         ESP_LOGE(tag, "ERROR: Unable to listen socket:  listen(): %s", strerror(errno));
         goto END;
     }
-    ESP_LOGI(tag, "Control and debug service running on port: %d", CONFIG_QROBOT_DEBUG_PORT);
+    ESP_LOGI(tag, "Control and debug service running on port: %d", CONFIG_QROBOT_CONTROL_PORT);
     int total = 2048; // 2 KB buffer
     char data[2048];
     char params[10][20]; // 10 Max
@@ -890,7 +900,7 @@ void qrobot_control_debug_service(void *ignore)
 			if(!strncmp(data, "RESET",5)) {
 				x_pos = y_pos = theta = 0;
 				robot_in_navigation = false;
-
+				   robot_shutdown = false;
 				sound_lib_play_tone(sound_device, A_5, 250, 0);
 			}
 			else if(!strncmp(data, "GOAL_GAIN",9)) {
@@ -957,7 +967,7 @@ void qrobot_control_debug_service(void *ignore)
 			}
 			else if(!strncmp(data, "LINE_FOLLOW",11)) {
 				// Start task
-				xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL,2, NULL);
+				xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 				sound_lib_play_tone(sound_device, A_5, 250, 0);
 			}
@@ -1166,6 +1176,7 @@ void qrobot_control_debug_service(void *ignore)
 				else {
 					printf("GOT ABORT!\n");
 					xEventGroupSetBits(qrobot_event_group, ABORT_BIT);
+					qrobot_stop();
 					sound_lib_play_tone(sound_device, C, 500, 0);
 				}
 				send(client_sock, "OK\n", 3, 0);
@@ -1400,7 +1411,7 @@ void qrobot_controller_task(void *ignore)
 			stepper_control_set_speed(STEPPER_MOTOR_1, motor_1_speed * 46);
 			stepper_control_set_speed(STEPPER_MOTOR_2, motor_2_speed * 46);
 
-			if ((current_tilt < 45) && (current_tilt > -45)) {
+			if ((current_tilt < 50) && (current_tilt > -50)) {
 				Kp_balance = Kp_upright;         // CONTROL GAINS FOR UPRIGHT
 				Kd_balance = Kd_upright;
 			} else { // We are in the raise up procedure => we use special control parameters
@@ -1539,6 +1550,7 @@ void qrobot_rc_input_handler(pulse_event_t event)
 			break;
     }
 	controller_output_map[RC_CONTROLLER].enable = throttle_enable | steering_enable;
+	//ESP_LOGD(tag, "TEST: %f", controller_output_map[RC_CONTROLLER].v);
 }
 
 void qrobot_init_adns()
@@ -1878,9 +1890,9 @@ void qrobot_start()
    xTaskCreate(&qrobot_navigation_task, "qrobot_navigation", 2048, NULL,3, NULL);
 
    // Start position hold task
- //  xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
+  // xTaskCreate(&qrobot_position_hold_task, "qrobot_navigation", 2048, NULL,2, NULL);
 //
-  // xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
+ //  xTaskCreate(&qrobot_line_follower_task, "qrobot_line_follower", 8192, NULL, 2, NULL);
 
 }
 
@@ -1888,6 +1900,9 @@ void qrobot_stop()
 {
 	robot_stable = false;
 	robot_shutdown = true;
+
+    stepper_control_set_speed(STEPPER_MOTOR_1, 0);
+    stepper_control_set_speed(STEPPER_MOTOR_2, 0);
 }
 
 

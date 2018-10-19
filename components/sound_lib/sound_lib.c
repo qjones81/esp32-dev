@@ -129,6 +129,7 @@ void sound_lib_player_task()
 
 void sound_lib_init()
 {
+    return;
 	// Create queue for receiving
 	sound_lib_queue = xQueueCreate(1, sizeof(sound_event_t)); // Only one item
 
@@ -143,6 +144,7 @@ void sound_lib_init()
 }
 void sound_lib_start()
 {
+    return;
 	//ESP_LOGI(tag, "Starting Sound.\n");
 
 	// Clear Events
@@ -152,7 +154,7 @@ void sound_lib_start()
 void sound_lib_stop()
 {
 	//ESP_LOGI(tag, "Starting Stop.\n");
-
+return;
 	// Set Events
 	xEventGroupSetBits(sound_lib_events, STOP_BIT);
 
@@ -161,6 +163,7 @@ void sound_lib_stop()
 }
 sound_device_t *sound_lib_create_device(gpio_num_t gpio_pin)
 {
+
 	sound_device_t *sound_dev = (sound_device_t *) malloc(sizeof(sound_device_t));
 
 	// TODO: Keep up with used channels, memory manage etc here.  Probably wait until C++ for that.
@@ -173,7 +176,7 @@ sound_device_t *sound_lib_create_device(gpio_num_t gpio_pin)
 }
 void sound_lib_play_tone(sound_device_t *device, uint32_t freq, uint32_t duration, uint32_t repeat_time)
 {
-	//return;
+	return;
 	EventBits_t uxBits = xEventGroupGetBits(sound_lib_events);
 	if ((uxBits & STOP_BIT)) { // In Stop
 		return;

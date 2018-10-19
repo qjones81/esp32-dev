@@ -172,7 +172,7 @@ bool adns3080_read_frame_burst(adns_3080_device_t *p, image_t *frame_out)
 	// Find first pixel offset
 	for (int i = 0; i < BURST_BUFFER_SIZE; i++) {
 		if (frame_in[i] & 0x40) { // Got first pixel
-			//ESP_LOGI(tag, "First pixel: %d/%d", i, (row_in[i] & 0x3f) << 2);
+			//ESP_LOGI(tag, "First pixel: %d/%d", i, (frame_in[i] & 0x3f) << 2);
 			offset = i;
 			found_start = true;
 			break;
